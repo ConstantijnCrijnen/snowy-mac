@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="720" viewBox="0 0 1440 720" role="img" aria-labelledby="title desc">
+  <title id="title">Snowy desktop illustration</title>
+  <desc id="desc">Snow rests on a pair of rounded desktop windows and a bottom Dock against a blue winter wallpaper. This is an original illustration, not an app screenshot.</desc>
+  <defs>
+    <linearGradient id="wallpaper" x2="0" y2="1"><stop stop-color="#a7c5de"/><stop offset="1" stop-color="#deebf3"/></linearGradient>
+    <linearGradient id="chrome" x2="0" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#d3d9df"/></linearGradient>
+    <linearGradient id="snow" x2="0" y2="1"><stop stop-color="#fff"/><stop offset=".65" stop-color="#f8fcff"/><stop offset="1" stop-color="#c8dbea"/></linearGradient>
+    <linearGradient id="button" x2="0" y2="1"><stop stop-color="#b2e1ff"/><stop offset=".48" stop-color="#5fbcff"/><stop offset=".52" stop-color="#2295ec"/><stop offset="1" stop-color="#78c9ff"/></linearGradient>
+    <linearGradient id="red" x2="0" y2="1"><stop stop-color="#ffbbb2"/><stop offset="1" stop-color="#ef6253"/></linearGradient>
+    <linearGradient id="yellow" x2="0" y2="1"><stop stop-color="#ffeeb0"/><stop offset="1" stop-color="#eeb53e"/></linearGradient>
+    <linearGradient id="green" x2="0" y2="1"><stop stop-color="#b5edb8"/><stop offset="1" stop-color="#50b458"/></linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="13" stdDeviation="18" flood-color="#46617c" flood-opacity=".2"/></filter>
+    <pattern id="flakes" width="160" height="145" patternUnits="userSpaceOnUse"><circle cx="21" cy="30" r="2" fill="#fff" opacity=".8"/><circle cx="118" cy="98" r="3" fill="#fff" opacity=".7"/><circle cx="70" cy="126" r="1.2" fill="#fff" opacity=".65"/></pattern>
+  </defs>
+  <rect width="1440" height="720" rx="20" fill="url(#wallpaper)"/>
+  <rect width="1440" height="720" rx="20" fill="url(#flakes)"/>
+  <path d="M20 0h1400a20 20 0 0 1 20 20v23H0V20A20 20 0 0 1 20 0" fill="#f2f6f9" fill-opacity=".9"/>
+  <g fill="#354c61" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="16">
+    <text x="29" y="28" font-size="22">❄</text><text x="67" y="28" font-weight="650">Snowy</text><text x="150" y="28">File</text><text x="204" y="28">Window</text><text x="290" y="28">Weather</text><text x="1379" y="28" text-anchor="end">Let it snow</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="128" y="146" width="516" height="338" rx="15" fill="#f8fafc" stroke="#a3afba"/>
+    <path d="M143 146h486a15 15 0 0 1 15 15v30H128v-30a15 15 0 0 1 15-15" fill="url(#chrome)"/>
+    <path d="M128 191h516" stroke="#b4bdc5"/>
+    <circle cx="153" cy="169" r="7" fill="url(#red)" stroke="#d36b60"/><circle cx="177" cy="169" r="7" fill="url(#yellow)" stroke="#caa658"/><circle cx="201" cy="169" r="7" fill="url(#green)" stroke="#62a468"/>
+    <text x="386" y="174" fill="#4c5863" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="16">A little winter</text>
+    <g fill="#334d65" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"><text x="167" y="274" font-size="49" font-weight="650" letter-spacing="-2">Hello, snow.</text><text x="170" y="320" font-size="20">Your windows make a good playground.</text><text x="170" y="349" font-size="20">Your pointer makes a pretty good shovel.</text></g>
+    <rect x="168" y="391" width="180" height="43" rx="22" fill="url(#button)" stroke="#3e8ec9"/>
+    <path d="M187 395h142c13 0 16 7 13 12H174c0-6 4-12 13-12" fill="#fff" opacity=".55"/>
+    <text x="258" y="419" text-anchor="middle" fill="#123a5a" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="17" font-weight="600">Make yourself cosy</text>
+  </g>
+  <path d="M126 148q7-15 26-12 27 6 47-1 28-11 58-4 25 5 54-3 23-10 45-6 20 4 36-1 22-5 46 3 35 10 64-2 22-6 51 3 33 10 56 5 21-3 31 18z" fill="url(#snow)"/>
+  <g filter="url(#shadow)">
+    <rect x="852" y="230" width="430" height="292" rx="15" fill="#f8fafc" stroke="#a3afba"/>
+    <path d="M867 230h400a15 15 0 0 1 15 15v30H852v-30a15 15 0 0 1 15-15" fill="url(#chrome)"/>
+    <path d="M852 275h430" stroke="#b4bdc5"/>
+    <circle cx="877" cy="253" r="7" fill="url(#red)" stroke="#d36b60"/><circle cx="901" cy="253" r="7" fill="url(#yellow)" stroke="#caa658"/><circle cx="925" cy="253" r="7" fill="url(#green)" stroke="#62a468"/>
+    <text x="1067" y="258" fill="#4c5863" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="16">Forecast</text>
+    <g font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" fill="#334d65"><text x="1067" y="383" text-anchor="middle" font-size="68">❄</text><text x="1067" y="433" text-anchor="middle" font-size="27" font-weight="600">100% chance of messing about</text><text x="1067" y="470" text-anchor="middle" font-size="19">No boots required.</text></g>
+  </g>
+  <path d="M850 232q7-18 33-13 25 7 44-3 22-11 49-4 20 5 40-1 26-8 51-1 20 6 43-2 29-11 55-2 22 9 49 3 39-5 70 23z" fill="url(#snow)"/>
+  <g filter="url(#shadow)">
+    <path d="M520 622h400q16 0 22 16l9 29q4 16-15 16H504q-19 0-15-16l9-29q6-16 22-16" fill="#edf3f9" fill-opacity=".72" stroke="#8fa8bd"/>
+    <g transform="translate(548 631)"><rect width="40" height="40" rx="9" fill="#529fe2" stroke="#3d83c1"/><path d="M0 17h40v14q0 9-9 9H9q-9 0-9-9" fill="#b1ddff"/><path d="M20 1v38M7 14l8 1m10-1 8-1M11 28q9 7 18-1" fill="none" stroke="#275b8b" stroke-width="2"/></g>
+    <g transform="translate(611 631)"><rect width="40" height="40" rx="9" fill="#f9fcff" stroke="#a3b2c0"/><path d="M20 5v30M7 12l26 16M7 28l26-16M15 8l5 4 5-4M15 32l5-4 5 4" stroke="#71b5e7" stroke-width="2.5" fill="none"/></g>
+    <g transform="translate(674 631)"><rect width="40" height="40" rx="9" fill="#fff5bc" stroke="#cbb970"/><path d="M1 12h38" stroke="#d6bf70"/><path d="M9 20h23M9 26h21M9 32h15" stroke="#b3a06c" stroke-width="2"/></g>
+    <g transform="translate(737 631)"><rect width="40" height="40" rx="9" fill="#eff8ff" stroke="#96b6ce"/><circle cx="20" cy="20" r="14" fill="#7bc4f5" stroke="#fff" stroke-width="2"/><path d="m20 10-4 14 10-5z" fill="#f9fcff"/></g>
+    <path d="M800 633v37" stroke="#a7b4be"/>
+    <g transform="translate(831 634)"><path d="M6 7h30l-4 31H10z" fill="#c2d1dd" stroke="#8da5b9"/><path d="M3 7h36M14 3h13M14 14l1 18M23 14v18M31 14l-1 18" fill="none" stroke="#8da5b9" stroke-width="2"/></g>
+  </g>
+  <path d="M500 627q11-14 32-11 24 5 41-3 29-13 61-3 21 6 44-3 21-8 42 0 22 8 43 1 27-11 56-1 31 10 55 1 38-10 63 19z" fill="url(#snow)"/>
+  <text x="720" y="585" text-anchor="middle" fill="#4b6f8e" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="27" font-weight="550" letter-spacing=".1">A small app for a snow day.</text>
+</svg>
