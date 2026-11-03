@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+    />
+    <meta name="theme-color" content="#102c4c" />
+    <meta
+      name="description"
+      content="A little winter for your Mac. Snowy brings interactive snow to your desktop: it lands on windows, piles up, and sweeps away with your cursor. Free and open source."
+    />
+    <meta property="og:title" content="Snowy — a little winter for your Mac" />
+    <meta
+      property="og:description"
+      content="Your windows have a forecast. A free, open-source Mac app, with an interactive desktop to play in."
+    />
+    <meta property="og:type" content="website" />
+    <title>Snowy — a little winter for your Mac</title>
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./src/app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#download">Skip to download</a>
+    <header class="menubar" aria-label="Desktop menu">
+      <button class="menu-brand" data-open="welcome" aria-label="About Snowy">
+        <svg aria-hidden="true"><use href="./assets/icons.svg#snow" /></svg
+        ><strong>Snowy</strong>
+      </button>
+      <nav class="desktop-menu" aria-label="Snowy menu">
+        <button data-open="readme">Read me</button
+        ><button data-open="weather">Weather</button
+        ><a
+          href="https://github.com/soloiaros/snowy-mac"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Source</a
+        >
+      </nav>
+      <div class="menu-right">
+        <span class="forecast"
+          ><span class="weather-dot"></span
+          ><span id="forecast-label">Lightly festive</span></span
+        ><button
+          id="pause-button"
+          class="menu-pause"
+          aria-label="Pause snowfall"
+          aria-pressed="false"
+        >
+          <svg aria-hidden="true">
+            <use href="./assets/icons.svg#pause" />
+          </svg></button
+        ><time id="clock" aria-label="Local time">Snow o’clock</time>
+      </div>
+    </header>
+
+    <main id="desktop" class="desktop" aria-label="Interactive Snowy desktop">
+      <div class="wallpaper-art" aria-hidden="true">
+        <div class="ridge ridge-back"></div>
+        <div class="ridge ridge-front"></div>
+      </div>
+      <canvas id="snow" aria-hidden="true"></canvas>
+      <div class="mobile-mode" role="group" aria-label="Touch interaction">
+        <button id="explore-mode" aria-pressed="true">Explore</button
+        ><button id="sweep-mode" aria-pressed="false">Sweep snow</button>
+      </div>
+
+      <section
+        id="window-welcome"
+        class="window welcome-window"
+        data-window="welcome"
+        aria-label="About Snowy"
+      >
+        <header
+          class="titlebar"
+          tabindex="0"
+          aria-label="Move About Snowy window with arrow keys"
+        >
+          <div class="traffic-lights">
+            <button
+              class="light close"
+              data-close="welcome"
+              aria-label="Close About Snowy"
+            ></button
+            ><button
+              class="light minimize"
+              data-close="welcome"
+              aria-label="Minimize About Snowy"
+            ></button
+            ><button
+              class="light maximize"
+              data-maximize="welcome"
+              aria-label="Resize About Snowy"
+            ></button>
+          </div>
+          <span>Snowy for Mac</span
+          ><svg class="title-icon" aria-hidden="true">
+            <use href="./assets/icons.svg#snow" />
+          </svg>
+        </header>
+        <div class="window-body welcome-body">
+          <svg class="app-icon" aria-hidden="true">
+            <use href="./assets/icons.svg#snow" />
+          </svg>
+          <h1>Snowy</h1>
+          <p class="welcome-subtitle">A little winter for your Mac.</p>
+          <a
+            id="download"
+            class="aqua-button download-button"
+            href="https://github.com/soloiaros/snowy-mac/releases/latest/download/Snowy-macOS-arm64.zip"
+            ><svg aria-hidden="true">
+              <use href="./assets/icons.svg#laptop" /></svg
+            >Get Snowy for Mac</a
+          >
+          <p class="download-detail">
+            Free & open source. macOS 14+, Apple silicon.
+          </p>
+          <a
+            class="quiet-link"
+            href="https://github.com/soloiaros/snowy-mac#build-it-yourself"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Build it yourself</a
+          >
+        </div>
+        <button
+          class="resize-grip"
+          aria-label="Resize About Snowy window"
+        ></button>
+      </section>
+
+      <section
+        id="window-weather"
+        class="window weather-window"
+        data-window="weather"
+        aria-label="Weather controls"
+      >
+        <header
+          class="titlebar"
+          tabindex="0"
+          aria-label="Move Weather window with arrow keys"
+        >
+          <div class="traffic-lights">
+            <button
+              class="light close"
+              data-close="weather"
+              aria-label="Close Weather"
+            ></button
+            ><button
+              class="light minimize"
+              data-close="weather"
+              aria-label="Minimize Weather"
+            ></button
+            ><button
+              class="light maximize"
+              data-maximize="weather"
+              aria-label="Resize Weather"
+            ></button>
+          </div>
+          <span>Weather</span>
+        </header>
+        <div class="window-body weather-body">
+          <div class="weather-summary">
+            <svg aria-hidden="true">
+              <use href="./assets/icons.svg#weather" />
+            </svg>
+            <div>
+              <strong>Indoors, with snow.</strong
+              ><span>You’re in charge of the forecast.</span>
+            </div>
+          </div>
+          <fieldset class="control-group">
+            <legend>Snowfall</legend>
+            <div class="segmented" id="intensity-control">
+              <button data-intensity="light" aria-pressed="false">Light</button
+              ><button data-intensity="steady" aria-pressed="true">
+                Steady</button
+              ><button data-intensity="flurry" aria-pressed="false">
+                Flurry
+              </button>
+            </div>
+          </fieldset>
+          <div class="wind-control">
+            <div>
+              <label for="wind-pad">Wind</label
+              ><output id="wind-label">A small breeze</output
+              ><button class="mini-button" id="reset-wind">Make it calm</button>
+            </div>
+            <div
+              id="wind-pad"
+              class="wind-pad"
+              role="slider"
+              tabindex="0"
+              aria-label="Wind direction and strength. Drag the arrow or use arrow keys."
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="12"
+            >
+              <svg viewBox="0 0 100 100" aria-hidden="true">
+                <circle cx="50" cy="50" r="3" />
+                <path id="wind-arrow" d="M50 50 65 50 M58 44 65 50 58 56" />
+              </svg>
+            </div>
+          </div>
+          <fieldset class="control-group tool-group">
+            <legend>Cursor tool</legend>
+            <div class="segmented">
+              <button data-tool="glove" aria-pressed="true">Glove</button
+              ><button data-tool="shovel" aria-pressed="false">Shovel</button>
+            </div>
+          </fieldset>
+        </div>
+        <button class="resize-grip" aria-label="Resize Weather window"></button>
+      </section>
+
+      <section
+        id="window-readme"
+        class="window readme-window"
+        data-window="readme"
+        aria-label="Read me"
+      >
+        <header
+          class="titlebar"
+          tabindex="0"
+          aria-label="Move Read me window with arrow keys"
+        >
+          <div class="traffic-lights">
+            <button
+              class="light close"
+              data-close="readme"
+              aria-label="Close Read me"
+            ></button
+            ><button
+              class="light minimize"
+              data-close="readme"
+              aria-label="Minimize Read me"
+            ></button
+            ><button
+              class="light maximize"
+              data-maximize="readme"
+              aria-label="Resize Read me"
+            ></button>
+          </div>
+          <span>read me.txt</span>
+        </header>
+        <div class="window-body readme-body">
+          <h2>Give winter<br />somewhere to land.</h2>
+          <ol class="instructions">
+            <li>
+              <span>1</span>
+              <p>Drag a window. Its snow comes along.</p>
+            </li>
+            <li>
+              <span>2</span>
+              <p>Sweep a pile, or grab the shovel.</p>
+            </li>
+            <li>
+              <span>3</span>
+              <p>Stretch the wind arrow. Make a blizzard.</p>
+            </li>
+          </ol>
+          <p class="note-footer">The desktop is yours to rearrange.</p>
+        </div>
+        <button class="resize-grip" aria-label="Resize Read me window"></button>
+      </section>
+
+      <section
+        id="window-terminal"
+        class="window terminal-window"
+        data-window="terminal"
+        aria-label="Snowy Terminal"
+        hidden
+      >
+        <header
+          class="titlebar"
+          tabindex="0"
+          aria-label="Move Terminal window with arrow keys"
+        >
+          <div class="traffic-lights">
+            <button
+              class="light close"
+              data-close="terminal"
+              aria-label="Close Terminal"
+            ></button
+            ><button
+              class="light minimize"
+              data-close="terminal"
+              aria-label="Minimize Terminal"
+            ></button
+            ><button
+              class="light maximize"
+              data-maximize="terminal"
+              aria-label="Resize Terminal"
+            ></button>
+          </div>
+          <span>snowy — terminal</span>
+        </header>
+        <div class="window-body terminal-body">
+          <div id="terminal-output" class="terminal-output" aria-live="polite">
+            <p>Snowy Desktop 0.9</p>
+            <p>A very small shell. Try “help”.</p>
+          </div>
+          <form id="terminal-form" autocomplete="off">
+            <label for="terminal-input">snowy ~ %</label
+            ><input
+              id="terminal-input"
+              name="command"
+              maxlength="80"
+              spellcheck="false"
+              autocapitalize="off"
+              aria-label="Terminal command"
+            /><button type="submit" class="sr-only">Run command</button>
+          </form>
+        </div>
+        <button
+          class="resize-grip"
+          aria-label="Resize Terminal window"
+        ></button>
+      </section>
+
+      <section
+        id="window-letter"
+        class="window letter-window"
+        data-window="letter"
+        aria-label="A holiday wish list"
+        hidden
+      >
+        <header
+          class="titlebar"
+          tabindex="0"
+          aria-label="Move Wish list window with arrow keys"
+        >
+          <div class="traffic-lights">
+            <button
+              class="light close"
+              data-close="letter"
+              aria-label="Close Wish list"
+            ></button
+            ><button
+              class="light minimize"
+              data-close="letter"
+              aria-label="Minimize Wish list"
+            ></button
+            ><button
+              class="light maximize"
+              data-maximize="letter"
+              aria-label="Resize Wish list"
+            ></button>
+          </div>
+          <span>wish list.txt</span>
+        </header>
+        <div class="window-body letter-body">
+          <span class="letter-stamp" aria-hidden="true">✳</span>
+          <h2>Dear winter,</h2>
+          <p>
+            I’d like a quieter desktop,<br />a really good cup of something,<br />and
+            absolutely no snow in my keyboard.
+          </p>
+          <p>Love,<br />the person moving all these windows</p>
+          <button id="defrost-button" class="mini-button">
+            P.S. Has anyone checked on Mariah?
+          </button>
+        </div>
+        <button
+          class="resize-grip"
+          aria-label="Resize Wish list window"
+        ></button>
+      </section>
+
+      <button
+        class="desktop-file source-file"
+        id="source-file"
+        data-open="readme"
+      >
+        <svg aria-hidden="true"><use href="./assets/icons.svg#folder" /></svg
+        ><span>Start here</span>
+      </button>
+      <button class="desktop-file letter-file" data-open="letter">
+        <svg aria-hidden="true"><use href="./assets/icons.svg#note" /></svg
+        ><span>wish list.txt</span>
+      </button>
+      <span class="desktop-caption">Drag a window. Make a little weather.</span>
+      <footer class="desktop-footer">
+        <span>Made for the joy of it.</span
+        ><a
+          href="https://github.com/soloiaros/snowy-mac"
+          target="_blank"
+          rel="noopener noreferrer"
+          >View on GitHub</a
+        ><button id="tidy-desktop">Tidy desktop</button>
+      </footer>
+    </main>
+
+    <nav id="dock" class="dock" aria-label="Desktop Dock">
+      <button
+        class="dock-item"
+        data-open="welcome"
+        aria-label="Open About Snowy"
+      >
+        <svg aria-hidden="true"><use href="./assets/icons.svg#snow" /></svg
+        ><span class="dock-tooltip">Snowy</span><i aria-hidden="true"></i>
+      </button>
+      <button
+        class="dock-item"
+        data-open="weather"
+        aria-label="Open Weather controls"
+      >
+        <svg aria-hidden="true"><use href="./assets/icons.svg#weather" /></svg
+        ><span class="dock-tooltip">Weather</span><i aria-hidden="true"></i>
+      </button>
+      <button class="dock-item" data-open="readme" aria-label="Open Read me">
+        <svg aria-hidden="true"><use href="./assets/icons.svg#note" /></svg
+        ><span class="dock-tooltip">Read me</span><i aria-hidden="true"></i>
+      </button>
+      <button class="dock-item" data-open="terminal" aria-label="Open Terminal">
+        <svg aria-hidden="true"><use href="./assets/icons.svg#terminal" /></svg
+        ><span class="dock-tooltip">Terminal</span><i aria-hidden="true"></i>
+      </button>
+      <span class="dock-separator" aria-hidden="true"></span>
+      <a
+        class="dock-item"
+        href="https://github.com/soloiaros/snowy-mac"
+        aria-label="View Snowy source code on GitHub"
+        target="_blank"
+        rel="noopener noreferrer"
+        ><svg aria-hidden="true"><use href="./assets/icons.svg#code" /></svg
+        ><span class="dock-tooltip">Source code</span></a
+      >
+      <button class="dock-item" id="clear-snow" aria-label="Clear settled snow">
+        <svg aria-hidden="true"><use href="./assets/icons.svg#trash" /></svg
+        ><span class="dock-tooltip">Clear snow</span>
+      </button>
+    </nav>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="cursor-tool" class="cursor-tool" aria-hidden="true"></div>
+    <noscript
+      ><div class="noscript-note">
+        The interactive desktop needs JavaScript. You can still
+        <a href="https://github.com/soloiaros/snowy-mac/releases"
+          >download Snowy from GitHub</a
+        >.
+      </div></noscript
+    >
+  </body>
+</html>

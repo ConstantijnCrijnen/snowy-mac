@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="blue" x2="0" y2="1"><stop stop-color="#c2efff"/><stop offset=".48" stop-color="#69b9ef"/><stop offset=".49" stop-color="#3997d3"/><stop offset="1" stop-color="#1664af"/></linearGradient>
+    <linearGradient id="yellow" x2="0" y2="1"><stop stop-color="#fff5bb"/><stop offset="1" stop-color="#e9cc72"/></linearGradient>
+    <linearGradient id="dark" x2="0" y2="1"><stop stop-color="#505b62"/><stop offset="1" stop-color="#172027"/></linearGradient>
+    <linearGradient id="metal" x2="1" y2="0"><stop stop-color="#82949e"/><stop offset=".4" stop-color="#edf5f9"/><stop offset=".6" stop-color="#bbcbd3"/><stop offset="1" stop-color="#71838d"/></linearGradient>
+  </defs>
+  <symbol id="snow" viewBox="0 0 64 64"><rect x="5" y="5" width="54" height="54" rx="13" fill="url(#blue)" stroke="#226eae"/><path d="M8 21Q32 7 56 21V12Q32-1 8 12Z" fill="#fff" opacity=".45"/><g stroke="#fff" fill="none" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M32 15v34M17 23l30 18M17 41l30-18M26 19l6 6 6-6M26 45l6-6 6 6M18 30l8-2-2-8M40 44l-2-8 8-2M24 44l2-8-8-2M46 30l-8-2 2-8"/></g></symbol>
+  <symbol id="weather" viewBox="0 0 64 64"><rect x="5" y="5" width="54" height="54" rx="12" fill="#c5e8f1" stroke="#6f9fad"/><circle cx="24" cy="24" r="11" fill="#ffdc6c" stroke="#d4ab38"/><path d="M18 29c-10-1-12 18 1 18h27c12-1 11-16 1-17-1-13-23-15-29-1Z" fill="#fbfdff" stroke="#91b4c7"/><g fill="#6bb7df"><circle cx="23" cy="52" r="2"/><circle cx="33" cy="55" r="2"/><circle cx="43" cy="52" r="2"/></g></symbol>
+  <symbol id="folder" viewBox="0 0 64 64"><path d="M5 17V12q0-4 4-4h15l6 6h25q4 0 4 4v33H5Z" fill="#81c7ee" stroke="#4a8caf"/><path d="M5 20h54v32q0 4-4 4H9q-4 0-4-4Z" fill="url(#blue)" stroke="#438ebd"/><path d="M7 23h50" stroke="#e9faff" stroke-width="2"/></symbol>
+  <symbol id="note" viewBox="0 0 64 64"><path d="M12 6h40v52H12Z" fill="url(#yellow)" stroke="#bfa557"/><path d="M12 6h40v9H12Z" fill="#e2bc58"/><path d="M18 24h28M18 32h28M18 40h24M18 48h17" stroke="#b4a56c" stroke-width="1.5"/><path d="M12 58h31l9-8v8Z" fill="#d3b665" opacity=".7"/></symbol>
+  <symbol id="terminal" viewBox="0 0 64 64"><rect x="4" y="9" width="56" height="45" rx="5" fill="url(#dark)" stroke="#75818a" stroke-width="2"/><path d="m14 23 9 7-9 7M29 39h15" fill="none" stroke="#e0ffe1" stroke-width="3" stroke-linecap="round"/><path d="M7 12h50" stroke="#a6b2b9"/></symbol>
+  <symbol id="trash" viewBox="0 0 64 64"><path d="m13 18 5 39h28l5-39Z" fill="url(#metal)" stroke="#7a8b96"/><ellipse cx="32" cy="17" rx="20" ry="5" fill="#a9b9c4" stroke="#6a7e8b"/><path d="m22 24 3 27M32 24v28M42 24l-3 27" stroke="#718692" stroke-width="2"/><path d="m18 16 3-9 13 2 4 7M29 17l3-13 13 3 2 11" fill="#f7f4df" stroke="#c6be97"/><path d="m23 9 8 3M35 8l6 2" stroke="#a4b4bc"/></symbol>
+  <symbol id="code" viewBox="0 0 64 64"><rect x="5" y="6" width="54" height="52" rx="11" fill="#e5e9ee" stroke="#95a2ae"/><path d="m25 22-11 10 11 10M39 22l11 10-11 10M35 17l-6 30" stroke="#456b8c" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></symbol>
+  <symbol id="play" viewBox="0 0 24 24"><path d="m8 4 12 8-12 8Z" fill="currentColor"/></symbol>
+  <symbol id="speaker" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4ZM17 8q5 4 0 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="arrow" viewBox="0 0 24 24"><path d="m5 19 14-14M9 5h10v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="laptop" viewBox="0 0 24 24"><path d="M5 4h14v12H5ZM2 19h20l-2 2H4Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+</svg>
