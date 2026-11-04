@@ -1,0 +1,75 @@
+# Snowy ❄️
+
+Snow for your desktop. A native Mac app that lets winter settle on your windows, widgets, and bottom Dock.
+
+Sweep a pile with your pointer. Pick up a shovel. Make a little mess.
+
+![An illustrated Snowy desktop with snow resting on overlapping windows and a bottom Dock](docs/snowy.svg)
+
+## Get it
+
+Download the latest [Apple Silicon build](https://github.com/soloiaros/snowy-mac/releases/latest/download/Snowy-macOS-arm64.zip), unzip it, and move **Snowy.app** into Applications. Then open it.
+
+Requires **macOS 14 or later**. The current download is for Apple Silicon; Intel Macs can build from source. Builds are locally signed, but not notarized by Apple. If macOS asks for approval, use **System Settings → Privacy & Security → Open Anyway** after trying to open the app.
+
+When updating, quit Snowy from its snowflake menu before replacing or reopening the app.
+
+## Let it snow
+
+Click the snowflake in your menu bar to make yourself comfortable:
+
+- Choose **Light**, **Steady**, or **Flurry**.
+- Brush snow away with the **Glove**, or choose **Shovel** for a proper clear-out.
+- Open **Wind…** and stretch or rotate the arrow to change its strength and direction.
+- **Pause** the weather or **Clear Settled Snow** whenever you like.
+
+Snow collects on window tops, widgets, Spotlight, and a bottom-positioned Dock. Moving windows push it around; closing Spotlight lets its uncovered snow fall. Side-positioned Docks are intentionally left out.
+
+The desktop stays clickable. Snowy uses public window geometry, not screen capture or Accessibility access. It makes no network requests and saves only your settings.
+
+## Build it yourself
+
+You’ll need **Xcode 16 or later**, its Metal toolchain, and a Mac.
+
+```sh
+git clone https://github.com/soloiaros/snowy-mac.git
+cd snowy-mac
+./scripts/build-app.sh
+open build/Snowy.app
+```
+
+The build script compiles the app and shaders, adds a local signature, and leaves the app in `build/`. It does not launch or install anything. If Xcode reports a missing Metal toolchain, install it from Xcode’s component settings first.
+
+## A desktop in your browser
+
+The [website](website/) has its own movable windows, a bottom Dock, and snow you can push around. There may also be someone thawing out for December.
+
+Run it locally with **Node.js 22 or later**. No packages need installing.
+
+```sh
+npm --prefix website run dev
+```
+
+Open the address printed by the server. To make the static site, run `npm --prefix website run build`; the result goes into `website/dist/`.
+
+## A few rough edges
+
+Window corners and some Dock bounds are estimates because macOS doesn’t expose every visible outline. Custom window shapes and system updates can need adjustments. The app has bounded simulation and rendering budgets, respects Low Power Mode and Reduced Motion, and pauses for sleep or fullscreen content. These are design choices, not a battery-life claim.
+
+If something behaves oddly, [open an issue](https://github.com/soloiaros/snowy-mac/issues) with your macOS version, screen setup, Dock position, and steps to reproduce it.
+
+## Contributing
+
+```sh
+swift test
+npm --prefix website test
+npm --prefix website run build
+```
+
+The tests run headlessly. They don’t open the app, inspect your desktop, or run benchmarks. See [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout and release steps, and [the architecture notes](docs/architecture.md) for the physics and resource limits.
+
+## Credits and license
+
+The readable, personal repository style was inspired by [Window Sweaters](https://github.com/saragordic/window-sweaters). Snowy has its own implementation and artwork; it does not include Window Sweaters or JankyBorders code.
+
+Released under the [MIT license](LICENSE).

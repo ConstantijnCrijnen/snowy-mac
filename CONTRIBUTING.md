@@ -1,0 +1,51 @@
+# Contributing to Snowy
+
+Small, focused fixes are welcome. For a larger behavior change, open an issue first so we can agree on how the snow should feel.
+
+## Find your way around
+
+- `Sources/SnowCore/` — geometry, snow profiles, granular material, collisions, and power policy.
+- `Sources/Snowy/` — the menu-bar app, window tracking, and Metal rendering.
+- `Tests/SnowCoreTests/` — deterministic geometry and physics regressions.
+- `website/` — the browser desktop and its independent JavaScript snow engine.
+- `docs/architecture.md` and `DESIGN.md` — implementation limits and interaction decisions.
+
+## Check a change
+
+For the Mac app, use Xcode 16 or later with the Metal toolchain installed:
+
+```sh
+swift test
+./scripts/build-app.sh
+```
+
+For the website, use Node.js 22 or later:
+
+```sh
+npm --prefix website test
+npm --prefix website run build
+```
+
+The headless tests should remain independent of the live desktop. Add a regression for a meaningful physics failure, especially when moving supports, corners, material conservation, or storage exhaustion are involved. Don’t replace a physics failure with a looser assertion unless the intended behavior has changed.
+
+Optional browser checks use an isolated temporary Chrome/Chromium profile. Start the website's dev server, then run `npm --prefix website run test:browser`. Set `CHROME_BIN` if the executable is not in a standard location. This checks actual window gestures, weather settings, Dock alignment after mobile scrolling, storage reloads, Reduced Motion, and terminal input handling. It never accesses your existing browser profile or launches the Mac app.
+
+Keep allocations and per-frame work bounded. Reuse buffers, preserve unplaced material, and avoid new render clocks for a local effect. Respect Reduced Motion, background-tab suspension, pause, and sleep.
+
+Mention manual visual checks separately from automated tests. A successful build doesn’t verify gesture feel or exact alignment with a particular macOS window shape.
+
+## Make a release
+
+Update the version and build number in `App/Info.plist`, run the checks, then package the native build:
+
+```sh
+./scripts/package-release.sh
+```
+
+This writes an architecture-labelled ZIP and SHA-256 checksum into `build/releases/`. It verifies the app signature before packaging and verifies the extracted archive again. It doesn’t launch the app.
+
+Push a matching `v<version>` tag, then manually run the **Release** workflow with that tag. The workflow checks that the tag matches `Info.plist`, runs tests, builds the app, and attaches the ZIP and checksum to the GitHub release. It uses a local ad-hoc signature; Developer ID signing and notarization are not configured.
+
+## Keep it original
+
+Only submit code and assets you have permission to share under the repository’s license. Window Sweaters is a README-style reference, not a source-code dependency. Please keep seasonal jokes light and optional; no surprise audio.
