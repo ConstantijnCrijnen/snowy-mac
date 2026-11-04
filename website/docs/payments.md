@@ -1,71 +1,51 @@
-# Pay what you want
+# Voluntary support
 
-Snowy is available for $0. The download window starts the DMG download directly
-when the visitor chooses $0; no account, checkout, email, or payment method is
-required. The wish list offers the same voluntary support choice after someone
-has tried the app.
+Snowy downloads directly for $0. Positive amounts from the price sheet and wish
+list use Polar hosted checkout. Card details stay on Polar; no payment SDK is
+loaded in the browser. Production API requests and the webhook use `2026-10`.
 
-Payments are deliberately disconnected. Positive amounts show a clear message
-and keep the free download available. Nothing is charged, submitted to Polar,
-or saved as a pledge. There is no payment SDK, API token, or checkout URL in the
-browser bundle.
+The existing one-time custom USD Snowy product is configured by POLAR_PRODUCT_ID
+in wrangler.jsonc. POLAR_ACCESS_TOKEN and POLAR_WEBHOOK_SECRET are encrypted
+Cloudflare bindings, never source files or frontend variables.
 
-## Frontend contract
+## Routes
 
-`src/payments.js` is shared by the download and support forms:
+- POST /api/checkout: same-origin JSON only, exact integer cents from 0 to100000,
+  allowlisted context and UUIDv4 request reference. Zero bypasses Polar. Product,
+  currency, return URL and success URL are controlled by the server.
+- GET /api/payment?ref=UUID: returns only checkout status, amount and context.
+  It retrieves the session directly from Polar, verifies product/currency, and
+  never returns customer or billing information. Only succeeded shows thanks.
+- POST /api/webhooks/polar: validates the original body using Standard Webhooks,
+  checks the signed timestamp, and deduplicates authenticated event IDs. No
+  account entitlement is created: Snowy remains freely downloadable. Refunds
+  and repeated events cannot revoke downloads or trigger duplicate fulfillment.
 
-- `parseAmount(raw)` accepts US dollar decimal strings with at most two decimal
-  places. It returns integer cents, or an error. Scientific notation, signs,
-  fractional cents, and ambiguous currency formatting are rejected.
-- The current site policy accepts $0 through $1,000. This is a local product
-  limit, not a statement about Polar's limits. One cent is accepted by the UI;
-  a future checkout must also respect the configured product/provider minimum.
-- `createPaymentIntent(raw, "download")` resolves $0 to the fixed GitHub DMG
-  release URL. `"support"` with $0 returns `no-contribution` without a download.
-- Every positive intent is `support-unavailable`, with `amountCents`, `currency:
-  "usd"`, and the allowlisted context. It includes a user-facing message, not a
-  checkout address. No function makes a network request.
+## Storage and failure handling
 
-## Connect Polar later
+SQLite Durable Objects serialize checkout creation by request reference. A
+retry returns the existing URL. A timeout of uncertain outcome never sends a
+second provider request for the same reference. Changed amounts require a new
+reference. The UI disables repeated submission and restores controls on failure.
 
-Use a one-time, USD, pay-what-you-want Snowy product. Polar supports custom
-pricing with a minimum and a suggested amount. [Polar product documentation](https://polar.sh/docs/features/products)
+Checkout references, provider session IDs and URLs expire after24hours. Webhook
+IDs expire after7days. Shared rate buckets expire after60seconds:15checkout
+requests and60status requests per client IP per minute. Only an IP hash is used
+to name the bucket; raw IPs, card details, emails, names and webhook bodies are
+not saved. Payment bookkeeping and refunds remain in the Polar dashboard.
 
-Add an authenticated-to-Polar server endpoint such as `POST /api/checkout` only
-when the owner is ready to accept payments. Store the organization access token,
-product ID, and webhook secret as server runtime secrets. Never copy them into
-static source, `dist/`, or a public environment variable.
+The free download remains available during cancellation, processing, provider
+outage, or validation failure. Return parameters alone never prove payment.
 
-The endpoint should:
+## Verification
 
-1. Accept a small JSON body containing only `amountCents` and context. Require an
-   integer amount from 1 through 100,000, allowlist `download` / `support`, and
-   choose currency and product from server configuration. Repeat validation on
-   the server; browser validation is not a trust boundary. Reject oversized
-   bodies and cross-origin requests, and rate-limit checkout creation.
-2. Create a Polar checkout using the configured product and the validated
-   `amount` in cents. Confirm the product uses custom pricing: Polar ignores
-   this amount for fixed and free products. Set fixed same-site success and
-   return URLs, rather than accepting arbitrary redirect addresses from the
-   browser. Use a persisted unique request key to make retries safe and avoid
-   creating multiple checkouts for one submission. Return only the hosted
-   checkout URL. [Polar checkout API](https://polar.sh/docs/api-reference/2026-10/checkouts/create-checkout-session)
-3. Keep the $0 route entirely local and free of provider requests. Disable the
-   form during a positive checkout request and restore it on cancellation or
-   failure. Do not label a redirect, button click, or `confirmed` checkout as a
-   successful payment. Retrieve the checkout on the server to establish its
-   `succeeded` state before showing payment confirmation. A failed payment must
-   never block the free download.
-4. For durable support records, verify Polar's webhook signature against the
-   original request bytes before parsing. Deduplicate event IDs, handle
-   redeliveries and out-of-order events, and retain only the minimal necessary
-   records. [Polar webhook delivery documentation](https://polar.sh/docs/integrate/webhooks/delivery)
+Run npm ci --ignore-scripts, npm test, npm run check and npm run deploy:dry-run.
+Tests cover amount tampering, origins, size limits, duplicate/concurrent checkout,
+provider ambiguity, rate limits, verified status and signed/replayed webhooks.
+Browser checks simulate a provider outage and verify the free fallback.
 
-Before activation, exercise sandbox success, cancellation, provider failure,
-repeat submission, tampered amount/product/redirect fields, and duplicate or
-invalid webhook deliveries. Update the CSP only for the final chosen integration
-and approved provider origins; a hosted checkout does not require embedding a
-payment form or third-party script in the desktop.
+A live checkout can be opened without entering card details or completing a
+purchase. No real charge should be made by an automated deployment check.
 
-Official documentation checked November 5, 2026. No Polar account or product has
-been created or connected by this change.
+References: [Checkout API](https://polar.sh/docs/api-reference/2026-10/checkouts/create-checkout-session),
+[Webhook validation](https://polar.sh/docs/integrate/webhooks/delivery).

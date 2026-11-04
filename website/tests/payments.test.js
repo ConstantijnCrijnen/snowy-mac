@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import {
   DOWNLOAD_URL,
   MAX_AMOUNT_CENTS,
-  PAYMENTS_UNAVAILABLE_MESSAGE,
   parseAmount,
   createPaymentIntent,
 } from "../src/payments.js";
@@ -67,11 +66,10 @@ test("positive amounts never pretend that checkout or payment has completed", ()
     const intent = createPaymentIntent("2.50", context);
     assert.deepEqual(intent, {
       ok: true,
-      kind: "support-unavailable",
+      kind: "checkout",
       amountCents: 250,
       currency: "usd",
       context,
-      message: PAYMENTS_UNAVAILABLE_MESSAGE,
     });
     assert.equal("url" in intent, false);
   }

@@ -10,12 +10,36 @@
   },
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "none"
+    "not_found_handling": "none",
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/api/*"
+    ]
   },
   "routes": [
     {
       "pattern": "snowy.aauburn.com",
       "custom_domain": true
+    }
+  ],
+  "main": "server/worker.js",
+  "vars": {
+    "POLAR_PRODUCT_ID": "2d5d0424-b023-44ec-ae4d-00165bcce0cc"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "PAYMENTS",
+        "class_name": "PaymentState"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "payments-v1",
+      "new_sqlite_classes": [
+        "PaymentState"
+      ]
     }
   ]
 }

@@ -1,8 +1,7 @@
 export const DOWNLOAD_URL =
   "https://github.com/soloiaros/snowy-mac/releases/latest/download/Snowy-macOS-arm64.dmg";
 export const MAX_AMOUNT_CENTS = 100_000;
-export const PAYMENTS_UNAVAILABLE_MESSAGE =
-  "Payments aren’t available yet. You can download for free and come back to support Snowy later.";
+
 
 // Parse a decimal string, not a floating-point dollar value. The server must
 // repeat validation when checkout is connected; these checks are for the UI.
@@ -28,8 +27,7 @@ export function parseAmount(raw) {
   return { ok: true, cents };
 }
 
-// No fetch, payment SDK, credentials, or pending contribution storage. Positive
-// amounts remain explicit unavailable intents until server checkout is added.
+// Local intent only. The server validates all amounts again before checkout.
 export function createPaymentIntent(raw, context = "download") {
   if (context !== "download" && context !== "support") {
     return { ok: false, error: "Choose whether to download or support Snowy." };
@@ -43,10 +41,9 @@ export function createPaymentIntent(raw, context = "download") {
   }
   return {
     ok: true,
-    kind: "support-unavailable",
+    kind: "checkout",
     amountCents: amount.cents,
     currency: "usd",
     context,
-    message: PAYMENTS_UNAVAILABLE_MESSAGE,
   };
 }

@@ -42,7 +42,7 @@ The build script compiles the app and shaders, adds a local signature, and leave
 
 ## A desktop in your browser
 
-The [website](https://snowy.aauburn.com) has its own movable windows, a bottom Dock, and snow you can push around. There may also be someone thawing out for December. Downloads are pay what you want, including $0; payment support is prepared for [Polar](website/docs/payments.md) but not connected.
+The [website](https://snowy.aauburn.com) has its own movable windows, a bottom Dock, and snow you can push around. There may also be someone thawing out for December. Downloads are pay what you want, including $0; optional support uses [Polar hosted checkout](website/docs/payments.md).
 
 Run it locally with **Node.js 22 or later**. No packages need installing.
 
@@ -62,6 +62,7 @@ If something behaves oddly, [open an issue](https://github.com/soloiaros/snowy-m
 
 ```sh
 swift test
+npm --prefix website ci --ignore-scripts
 npm --prefix website test
 npm --prefix website run build
 ```

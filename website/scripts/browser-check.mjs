@@ -485,6 +485,15 @@ async function setAmount(p, selector, value) {
 async function downloadCheck(p, run, mobile = false) {
   await p.evaluate(`(() => {
     window.__snowyDownloads = [];
+    window.__snowyCheckoutRequests = [];
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (url, options) => {
+      if (url === '/api/checkout') {
+        window.__snowyCheckoutRequests.push(JSON.parse(options.body));
+        return Response.json({error:'Payments are temporarily unavailable. You can still download for $0.'}, {status:503});
+      }
+      return originalFetch(url, options);
+    };
     const click = HTMLAnchorElement.prototype.click;
     HTMLAnchorElement.prototype.click = function () {
       if (this.href.includes("/releases/") && this.href.endsWith(".dmg")) {
@@ -533,7 +542,7 @@ async function downloadCheck(p, run, mobile = false) {
   assert.match(
     await p.evaluate('document.querySelector("#download-feedback").textContent'),
     /aren.t available|not available|unavailable|not connected|coming soon/i,
-    "Paid checkout clearly remains unavailable",
+    "Provider failure preserves a free fallback",
   );
   assert.deepEqual(await p.evaluate("window.__snowyDownloads"), []);
   assert.equal(await p.evaluate("location.href"), baseURL);
@@ -572,7 +581,7 @@ async function downloadCheck(p, run, mobile = false) {
       event.method === "Network.requestWillBeSent" &&
       /(?:^|\.)polar\.sh$/.test(new URL(event.params.request.url).hostname),
   );
-  assert.deepEqual(checkoutRequests, [], "No Polar requests happen before integration");
+  assert.deepEqual(checkoutRequests, [], "The browser calls our API rather than Polar directly");
 }
 
 async function supportCheck(p) {
@@ -583,7 +592,7 @@ async function supportCheck(p) {
   assert.match(
     await p.evaluate('document.querySelector("#support-feedback").textContent'),
     /aren.t available|not available|unavailable|not connected|coming soon/i,
-    "Support does not claim a donation succeeded before payments are connected",
+    "Support failure never claims a donation succeeded",
   );
   assert.equal(await p.evaluate("location.href"), baseURL);
   await setAmount(p, "#support-amount", "0");

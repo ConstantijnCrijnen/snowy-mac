@@ -1,8 +1,9 @@
 # Cloudflare deployment
 
 Production is **https://snowy.aauburn.com**, served by the `snowy` Worker with
-Cloudflare Static Assets. There is no Worker script, database, analytics, or
-payment backend. Polar remains disconnected.
+Cloudflare Static Assets. The Worker handles payment API routes and uses small SQLite Durable Objects
+for checkout idempotency, rate buckets and webhook deduplication. Static files
+still bypass Worker execution. There is no client analytics.
 
 ## Publish
 
@@ -14,6 +15,7 @@ not a credential.
 cd website
 npm ci
 npx wrangler whoami
+# Secrets must already exist: POLAR_ACCESS_TOKEN and POLAR_WEBHOOK_SECRET
 npm test
 npm run check
 npm run deploy:dry-run

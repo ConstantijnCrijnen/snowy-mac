@@ -1,7 +1,7 @@
 import { createPaymentIntent, parseAmount } from "./payments.js";
 
 // The only release URL comes from payments.js. An amount never becomes a URL,
-// HTML, or a checkout request. Positive intents stay local until Polar is ready.
+// HTML, or an arbitrary redirect. Paid intents go through the same-origin API.
 export function setupDownloadFlow({ onOpen = () => {} } = {}) {
   const dialog = document.querySelector("#download-dialog");
   const trigger = document.querySelector("#download");
@@ -10,6 +10,35 @@ export function setupDownloadFlow({ onOpen = () => {} } = {}) {
   const feedback = document.querySelector("#download-feedback");
   const free = document.querySelector("#download-free");
   const submit = document.querySelector("#download-submit");
+  const attempts = new Map();
+  const busyForms = new Set();
+  async function checkout(intent, targetForm, feedbackElement) {
+    if (busyForms.has(targetForm)) return;
+    busyForms.add(targetForm);
+    const controls = [...targetForm.querySelectorAll('button, input')];
+    for (const control of controls) control.disabled = true;
+    const signature = intent.context + ':' + intent.amountCents;
+    if (!attempts.has(signature)) attempts.set(signature, crypto.randomUUID());
+    message(feedbackElement, 'Opening secure checkout…');
+    try {
+      const response = await fetch('/api/checkout', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amountCents: intent.amountCents, context: intent.context, requestId: attempts.get(signature) }),
+        signal: AbortSignal.timeout(20000),
+      });
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error || 'Couldn’t open checkout. Please try again.');
+      const url = new URL(result.url);
+      if (url.protocol !== 'https:' || url.hostname !== 'polar.sh' || !url.pathname.startsWith('/checkout/') || url.username || url.password || url.port) throw Error('Couldn’t open secure checkout.');
+      location.assign(url.href);
+    } catch (error) {
+      message(feedbackElement, error.name === 'TimeoutError' ? 'Checkout took too long. Reload to try again, or download for $0.' : error.message);
+      if (targetForm === form) free.hidden = false;
+    } finally {
+      busyForms.delete(targetForm);
+      for (const control of controls) control.disabled = false;
+    }
+  }
   const presets = [...dialog.querySelectorAll("[data-amount]")];
 
   function message(element, text) {
@@ -65,8 +94,7 @@ export function setupDownloadFlow({ onOpen = () => {} } = {}) {
       amount.focus();
     } else if (intent.kind === "download") download();
     else {
-      message(feedback, intent.message);
-      free.hidden = false;
+      checkout(intent, form, feedback);
     }
   });
 
@@ -85,9 +113,38 @@ export function setupDownloadFlow({ onOpen = () => {} } = {}) {
       message(supportFeedback, intent.error);
       supportAmount.focus();
     } else {
-      message(supportFeedback, intent.kind === "no-contribution"
-        ? "No contribution needed. Enjoy the snow — following along means a lot."
-        : intent.message);
+      if (intent.kind === "no-contribution")
+        message(supportFeedback, "No contribution needed. Enjoy the snow — following along means a lot.");
+      else checkout(intent, supportForm, supportFeedback);
     }
   });
+  const returned = new URL(location.href);
+  const reference = returned.searchParams.get('payment');
+  if (reference || returned.searchParams.has('payment_cancelled')) {
+    trigger.click();
+    if (!reference) {
+      message(feedback, 'Checkout cancelled. No problem — Snowy is still yours for $0.');
+      history.replaceState(null, '', location.pathname + location.hash);
+    } else {
+      message(feedback, 'Confirming your payment…');
+      (async () => {
+        try {
+          for (let i = 0; i < 5; i++) {
+            const response = await fetch('/api/payment?ref=' + encodeURIComponent(reference), { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+            const result = await response.json();
+            if (!response.ok) throw Error('We couldn’t confirm this payment. You can still download for $0.');
+            if (result.status === 'succeeded') {
+              message(feedback, result.amountCents > 0 ? 'Thank you for supporting Snowy! Your download is ready below.' : 'Your download is ready. Enjoy the snow!');
+              history.replaceState(null, '', location.pathname + location.hash);
+              return;
+            }
+            if (['failed', 'expired'].includes(result.status)) throw Error('This checkout didn’t complete. You can still download for $0.');
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          }
+          message(feedback, 'Your payment is still processing. Refresh to check again, or download Snowy for $0 now.');
+        } catch (error) { message(feedback, error.message); }
+      })();
+    }
+  }
+
 }
