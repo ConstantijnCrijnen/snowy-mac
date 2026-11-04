@@ -13,8 +13,12 @@ fi
 
 app_dir="$project_root/build/Snowy.app"
 binary="$app_dir/Contents/MacOS/Snowy"
-if [[ ! -f "$binary" ]]; then
+if [[ -L "$project_root/build" || -L "$app_dir" || ! -d "$app_dir" || ! -f "$binary" ]]; then
   print -u2 "Missing build/Snowy.app. Run ./scripts/build-app.sh first."
+  exit 1
+fi
+if [[ "$(plutil -extract CFBundleIdentifier raw "$app_dir/Contents/Info.plist" 2>/dev/null || true)" != "app.snowy.desktop" ]]; then
+  print -u2 "Refusing to package a bundle not identified as Snowy."
   exit 1
 fi
 codesign --verify --deep --strict "$app_dir"
@@ -33,17 +37,71 @@ if [[ -L "$project_root/build" || -L "$release_dir" ]]; then
 fi
 mkdir -p "$release_dir"
 staging_dir="$(mktemp -d "$release_dir/.Snowy-package.XXXXXX")"
-trap 'rm -rf "$staging_dir"' EXIT
-filename="Snowy-macOS-$architecture.zip"
-ditto -c -k --sequesterRsrc --keepParent "$app_dir" "$staging_dir/$filename"
+mounted=0
+function cleanup() {
+  if [[ "$mounted" == 1 ]]; then
+    hdiutil detach "$staging_dir/mount" -quiet || return 1
+  fi
+  rm -rf "$staging_dir"
+}
+trap cleanup EXIT
+archive_name="Snowy-macOS-$architecture.zip"
+dmg_name="Snowy-macOS-$architecture.dmg"
+for filename in "$archive_name" "$dmg_name" "$archive_name.sha256" "$dmg_name.sha256"; do
+  if [[ -L "$release_dir/$filename" || -d "$release_dir/$filename" ]]; then
+    print -u2 "Refusing to replace a redirected release file: $filename"
+    exit 1
+  fi
+done
+
+# Keep the ZIP for existing download links and people who prefer an archive.
+ditto -c -k --sequesterRsrc --keepParent "$app_dir" "$staging_dir/$archive_name"
 mkdir "$staging_dir/verify"
-ditto -x -k "$staging_dir/$filename" "$staging_dir/verify"
+ditto -x -k "$staging_dir/$archive_name" "$staging_dir/verify"
 codesign --verify --deep --strict "$staging_dir/verify/Snowy.app"
+
+# The disk image is a conventional drag-to-Applications install, without an
+# installer package, privileged scripts, or any automatic app launch.
+mkdir "$staging_dir/image"
+ditto "$app_dir" "$staging_dir/image/Snowy.app"
+ln -s /Applications "$staging_dir/image/Applications"
+cat > "$staging_dir/image/Install Snowy.txt" <<'INSTALL'
+Install Snowy
+
+1. Drag Snowy.app onto the Applications shortcut.
+2. Eject the Snowy disk image.
+3. Open Snowy from Applications. Its snowflake menu appears in the menu bar.
+
+Requires macOS 14 or later. This download is for the architecture in its filename.
+
+Updating? Quit Snowy from its snowflake menu before replacing the app.
+
+This build is locally signed and is not notarized by Apple. If macOS blocks it,
+try opening Snowy, then go to System Settings > Privacy & Security > Open Anyway.
+
+Source and help: https://github.com/soloiaros/snowy-mac
+INSTALL
+hdiutil create -quiet -volname Snowy -fs HFS+ -format UDZO \
+  -srcfolder "$staging_dir/image" "$staging_dir/$dmg_name"
+hdiutil verify -quiet "$staging_dir/$dmg_name"
+mkdir "$staging_dir/mount"
+hdiutil attach -quiet -readonly -nobrowse -noautoopen \
+  -mountpoint "$staging_dir/mount" "$staging_dir/$dmg_name"
+mounted=1
+codesign --verify --deep --strict "$staging_dir/mount/Snowy.app"
+if [[ ! -L "$staging_dir/mount/Applications" || "$(readlink "$staging_dir/mount/Applications")" != /Applications ]]; then
+  print -u2 "The disk image is missing its Applications shortcut."
+  exit 1
+fi
+test -f "$staging_dir/mount/Install Snowy.txt"
+hdiutil detach -quiet "$staging_dir/mount"
+mounted=0
 (
   cd "$staging_dir"
-  shasum -a 256 "$filename" > "$filename.sha256"
+  shasum -a 256 "$dmg_name" > "$dmg_name.sha256"
+  shasum -a 256 "$archive_name" > "$archive_name.sha256"
 )
-mv -f "$staging_dir/$filename" "$release_dir/$filename"
-mv -f "$staging_dir/$filename.sha256" "$release_dir/$filename.sha256"
-print "Packaged $release_dir/$filename"
-print "Checksum $release_dir/$filename.sha256"
+for filename in "$dmg_name" "$archive_name" "$dmg_name.sha256" "$archive_name.sha256"; do
+  mv -f "$staging_dir/$filename" "$release_dir/$filename"
+  print "Packaged $release_dir/$filename"
+done

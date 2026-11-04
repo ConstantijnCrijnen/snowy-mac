@@ -8,7 +8,7 @@ Sweep a pile with your pointer. Pick up a shovel. Make a little mess.
 
 ## Get it
 
-Download the latest [Apple Silicon build](https://github.com/soloiaros/snowy-mac/releases/latest/download/Snowy-macOS-arm64.zip), unzip it, and move **Snowy.app** into Applications. Then open it.
+Download the latest [Apple Silicon DMG](https://github.com/soloiaros/snowy-mac/releases/latest/download/Snowy-macOS-arm64.dmg), open it, and drag **Snowy.app** onto **Applications**. Eject the disk image, then open Snowy from Applications.
 
 Requires **macOS 14 or later**. The current download is for Apple Silicon; Intel Macs can build from source. Builds are locally signed, but not notarized by Apple. If macOS asks for approval, use **System Settings → Privacy & Security → Open Anyway** after trying to open the app.
 
@@ -42,7 +42,7 @@ The build script compiles the app and shaders, adds a local signature, and leave
 
 ## A desktop in your browser
 
-The [website](website/) has its own movable windows, a bottom Dock, and snow you can push around. There may also be someone thawing out for December.
+The [website](website/) has its own movable windows, a bottom Dock, and snow you can push around. There may also be someone thawing out for December. Downloads are pay what you want, including $0; payment support is prepared for [Polar](website/docs/payments.md) but not connected.
 
 Run it locally with **Node.js 22 or later**. No packages need installing.
 
@@ -72,4 +72,4 @@ The tests run headlessly. They don’t open the app, inspect your desktop, or ru
 
 The readable, personal repository style was inspired by [Window Sweaters](https://github.com/saragordic/window-sweaters). Snowy has its own implementation and artwork; it does not include Window Sweaters or JankyBorders code.
 
-Released under the [MIT license](LICENSE).
+Code and original artwork use the [MIT license](LICENSE). The user-provided sound clip is excluded from that license.
