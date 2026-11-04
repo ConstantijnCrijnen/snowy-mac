@@ -144,27 +144,6 @@ svg {
   align-items: center;
   gap: 13px;
 }
-.forecast {
-  display: flex;
-  gap: 7px;
-  align-items: center;
-  font-size: 11px;
-  color: #587183;
-}
-.weather-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 100%;
-  background: #54875b;
-  box-shadow: 0 0 0 2px #fff8;
-}
-.menu-pause {
-  padding: 0 3px !important;
-}
-.menu-pause svg {
-  width: 14px;
-  height: 14px;
-}
 #clock {
   font-variant-numeric: tabular-nums;
   min-width: 63px;
@@ -844,8 +823,8 @@ h1 {
   outline-offset: 2px;
 }
 .letter-window {
-  width: 330px;
-  height: 278px;
+  width: 350px;
+  height: 365px;
   left: 150px;
   top: 398px;
 }
@@ -881,6 +860,124 @@ h1 {
   margin-top: 0;
   font-family: "Lucida Grande", sans-serif;
   font-size: 9px;
+}
+.social-links {
+  display: flex;
+  gap: 20px;
+  margin: 14px 0 22px;
+  font: 12px/1.5 "Lucida Grande", sans-serif;
+}
+.social-links a { text-underline-offset: 3px; }
+.social-links span { font-size: 11px; }
+.support-form {
+  border-top: 1px solid #ded5c5;
+  padding-top: 15px;
+  font: 12px/1.6 "Lucida Grande", sans-serif;
+}
+.support-form label { display: block; margin-bottom: 10px; }
+.support-input-row { display: flex; gap: 9px; }
+.support-input-row .amount-field { flex: 1; min-width: 0; }
+.support-input-row .mini-button { font-size: 11px; padding: 5px 12px; }
+.amount-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid #93a6b5;
+  border-radius: 6px;
+  box-shadow: inset 0 1px 3px #2c4d611a, 0 1px #fff;
+  padding: 6px 10px;
+  color: #4b6578;
+}
+.amount-field:focus-within { outline: 3px solid #80b8e4; outline-offset: 1px; }
+.amount-field input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  color: #172f42;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.amount-field input:focus-visible { outline: none; }
+.amount-field:has([aria-invalid="true"]) { border-color: #ae4335; }
+.payment-feedback {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #d2c7ab;
+  border-radius: 6px;
+  background: #fff9e7;
+  color: #5d503a;
+  font: 12px/1.5 "Lucida Grande", sans-serif;
+}
+.download-dialog {
+  width: 410px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100svh - 28px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid #718698;
+  border-radius: 11px;
+  background: #f5f7f8;
+  color: var(--ink);
+  box-shadow: 0 20px 70px #00102580, 0 0 0 1px #ffffff40;
+}
+.download-dialog::backdrop { background: #03132680; }
+.dialog-titlebar {
+  position: relative;
+  height: 33px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid #a2afb8;
+  background: linear-gradient(#f4f7f9, #cbd4dc);
+  box-shadow: inset 0 1px #fff;
+  font-size: 11px;
+  color: #314450;
+  text-shadow: 0 1px #fff;
+}
+.dialog-titlebar .traffic-lights { top: 10px; }
+.download-dialog-body {
+  padding: 23px 28px 17px;
+  background: repeating-linear-gradient(0deg, #f9fbfc 0 2px, #f3f6f8 2px 4px);
+}
+.dialog-app-icon { width: 48px; height: 48px; margin-bottom: 14px; }
+.download-dialog h2 {
+  margin: 0 0 9px;
+  font: 500 23px/1.2 "Helvetica Neue", sans-serif;
+  letter-spacing: -0.6px;
+  color: #1b3348;
+}
+#download-description { font-size: 13px; line-height: 1.5; margin: 0 0 20px; }
+#download-form > label { display: block; font-size: 12px; margin-bottom: 8px; }
+#download-form > label span { color: #607587; }
+.download-amount-field { height: 49px; padding: 7px 13px; font: 27px/1.2 "Helvetica Neue", sans-serif; }
+.price-presets { display: flex; gap: 8px; margin-top: 10px; }
+.price-presets button {
+  flex: 1;
+  min-height: 33px;
+  background: linear-gradient(#fff, #e4eaf0);
+  border: 1px solid #a6b7c4;
+  border-radius: 5px;
+  box-shadow: inset 0 1px #fff;
+  font-size: 12px;
+}
+.price-presets button[aria-pressed="true"] { background: linear-gradient(#91bfe5, #c2def2); border-color: #6c94b4; color: #173f5b; }
+#download-later { margin: 18px 0; color: #526b7c; font-size: 12px; line-height: 1.65; }
+.dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 21px; }
+.dialog-actions .mini-button { min-height: 33px; padding: 5px 16px; font-size: 12px; }
+.dialog-actions .aqua-button { min-height: 35px; padding: 0 21px; font-size: 13px; }
+.quiet-button { background: none; color: #1761bc; text-decoration: underline; text-underline-offset: 3px; padding: 8px 0 0; font-size: 12px; }
+.install-detail { margin: 15px 0 0; text-align: center; color: #607587; font-size: 10px; line-height: 1.5; }
+@media (max-width: 700px) {
+  .download-dialog-body { padding: 20px; }
+  .dialog-actions { gap: 9px; }
+  .dialog-actions .aqua-button { padding: 0 16px; }
+  .amount-field input { font-size: 16px; }
+  .download-amount-field input { font-size: 27px; }
 }
 .desktop-file {
   position: absolute;
@@ -1084,12 +1181,6 @@ h1 {
   border: 1px solid #859dac;
   border-radius: 8px;
 }
-.defrosted .weather-dot {
-  background: #c15e4e;
-}
-.defrosted .app-icon {
-  filter: drop-shadow(0 2px 4px #e9ba5880);
-}
 @media (min-width: 1600px) {
   .welcome-window {
     top: calc(50% - 224px);
@@ -1171,9 +1262,6 @@ h1 {
   }
   .menu-right {
     gap: 10px;
-  }
-  .forecast {
-    font-size: 10px;
   }
   #clock {
     font-size: 10px;
@@ -1420,7 +1508,7 @@ h1 {
     left: 12px;
     top: 340px;
     width: calc(100% - 24px);
-    height: 295px;
+    height: 365px;
   }
   .letter-body {
     font-size: 13px;
@@ -1440,9 +1528,6 @@ h1 {
   }
 }
 @media (max-width: 360px) {
-  .forecast {
-    display: none;
-  }
   .dock {
     gap: 1px;
     padding-left: 7px;

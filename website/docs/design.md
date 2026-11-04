@@ -17,10 +17,12 @@ Title bars follow the pointer directly. Traffic lights hide/reopen or resize win
 
 One animation clock runs the snow. Main actions have immediate press feedback; opening windows uses a short, restrained opacity/scale transition. Dock icon feedback is local. Reduced Motion disables decorative falls and transition movement while retaining material interaction. Hidden tabs suspend work.
 
-The Terminal accepts a small whitelist of commands. The seasonal defrost joke is opt-in, has no surprise audio and uses no song recording or lyrics. Weather preferences are validated, saved locally when available, and fall back without breaking the desktop if storage is blocked.
+The Terminal accepts a small whitelist of commands. The seasonal defrost sound is a user-provided MP3, played only after an explicit click or Terminal command. It does not change the weather. Weather preferences are validated, saved locally when available, and fall back without breaking the desktop if storage is blocked.
 
 ## Validation
 
 Native app verification remains headless. The user separately authorized an isolated headless browser for the website; it uses a temporary browser profile and never controls the user's desktop or launches Snowy. Browser evidence and temporary reports are excluded from Git. Physics regressions run with Node's built-in test runner; there are no runtime dependencies or benchmark claims.
 
 One independent visual review of the initial light wallpaper scored it 8/10. It identified weak snow contrast, faint requirements text, and mobile text behind the Dock. The final direction follows the user's request for a dark classic-OS-X blue wallpaper, increases requirements text contrast/size, and shortens the instructions so their numbered content clears the mobile Dock. A second independent review of the final dark desktop and phone screenshots scored it 9/10, with no visual blockers. The remaining optional refinement is to simplify the mountain silhouettes so they echo the Aqua wallpaper arcs more closely. Three consecutive isolated browser runs cover the same desktop, phone, Reduced Motion and storage flows.
+
+The download opens an Aqua price sheet, defaults to $0, and links to the verified macOS DMG. Positive download and wish-list support amounts share a validated local intent; payments remain unconnected. The sheet explains that visitors can donate later. Instagram and TikTok link to archieauburn. The favicon reuses the same glossy Snowy artwork as the Dock.
