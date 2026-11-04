@@ -1,0 +1,31 @@
+name: Something looks wrong
+description: Report a snow, window, or website problem.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we reproduce it?
+      placeholder: Move a window with snow from the left side into another window…
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Snowy version or commit
+  - type: textarea
+    id: setup
+    attributes:
+      label: Your setup
+      description: For the app, include macOS version, Mac model, screens, Dock position, and auto-hide. For the website, include browser, device, and screen size.
+  - type: textarea
+    id: attachment
+    attributes:
+      label: Anything else?
+      description: A cropped screenshot can help. Please leave out unrelated private content.
