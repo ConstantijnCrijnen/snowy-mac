@@ -30,7 +30,14 @@ if (
 for (const file of entries)
   await rm(resolve(dist, file), { recursive: true, force: true });
 await writeFile(marker, "Snowy static output\n");
-for (const file of ["index.html", "styles.css", "src", "assets"]) {
+for (const file of [
+  "index.html",
+  "styles.css",
+  "src",
+  "assets",
+  "_headers",
+  ".assetsignore",
+]) {
   await cp(resolve(root, file), resolve(dist, file), { recursive: true });
 }
 console.log("Built website/dist (no runtime dependencies).");

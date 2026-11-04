@@ -1,5 +1,6 @@
 dist/
 node_modules/
+.wrangler/
 .sites-runtime/
 .sites-checkout/
 .sites-checkout-*/

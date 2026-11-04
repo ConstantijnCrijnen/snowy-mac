@@ -42,7 +42,7 @@ The build script compiles the app and shaders, adds a local signature, and leave
 
 ## A desktop in your browser
 
-The [website](website/) has its own movable windows, a bottom Dock, and snow you can push around. There may also be someone thawing out for December. Downloads are pay what you want, including $0; payment support is prepared for [Polar](website/docs/payments.md) but not connected.
+The [website](https://snowy.aauburn.com) has its own movable windows, a bottom Dock, and snow you can push around. There may also be someone thawing out for December. Downloads are pay what you want, including $0; payment support is prepared for [Polar](website/docs/payments.md) but not connected.
 
 Run it locally with **Node.js 22 or later**. No packages need installing.
 
@@ -50,7 +50,7 @@ Run it locally with **Node.js 22 or later**. No packages need installing.
 npm --prefix website run dev
 ```
 
-Open the address printed by the server. To make the static site, run `npm --prefix website run build`; the result goes into `website/dist/`.
+Open the address printed by the server. To make the static site, run `npm --prefix website run build`; the result goes into `website/dist/`. See the [Cloudflare deployment guide](website/docs/deployment.md) to publish it.
 
 ## A few rough edges
 

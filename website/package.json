@@ -3,13 +3,20 @@
   "version": "0.9.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "packageManager": "npm@11.9.0",
   "scripts": {
     "dev": "node scripts/serve.mjs",
     "build": "node scripts/build.mjs",
+    "deploy": "wrangler deploy",
+    "deploy:dry-run": "wrangler deploy --dry-run",
     "test": "node --test tests/*.test.js",
     "test:browser": "node scripts/browser-check.mjs",
     "check": "node --check src/app.js && node --check src/snow-engine.js && node --check src/download-flow.js && node --check src/payments.js"
+  },
+  "devDependencies": {
+    "wrangler": "4.157.0"
   }
 }

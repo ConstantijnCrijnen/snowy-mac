@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "snowy",
+  "account_id": "fd75e45889c3e4480b8ccee44f51156a",
+  "compatibility_date": "2026-11-05",
+  "workers_dev": false,
+  "preview_urls": false,
+  "build": {
+    "command": "npm run build"
+  },
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "none"
+  },
+  "routes": [
+    {
+      "pattern": "snowy.aauburn.com",
+      "custom_domain": true
+    }
+  ]
+}
