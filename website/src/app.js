@@ -1,3 +1,4 @@
+import { setupDownloadFlow } from "./download-flow.js";
 import { SnowEngine } from "./snow-engine.js";
 import { readPreferences, savePreferences } from "./preferences.js";
 import {
@@ -63,7 +64,6 @@ let lastFrame = 0;
 let lastMinute = -1;
 let toastUntil = 0;
 let clearCount = 0;
-let defrost = null;
 const windSpring = {
   length: savedWind.strength * 38,
   target: savedWind.strength * 38,
@@ -72,7 +72,7 @@ const windSpring = {
 };
 const toastElement = document.querySelector("#toast");
 const cursorElement = document.querySelector("#cursor-tool");
-const pauseButton = document.querySelector("#pause-button");
+const downloadDialog = document.querySelector("#download-dialog");
 const windPad = document.querySelector("#wind-pad");
 const windArrow = document.querySelector("#wind-arrow");
 const terminalInput = document.querySelector("#terminal-input");
@@ -491,6 +491,7 @@ document.addEventListener("click", (event) => {
 document.addEventListener(
   "pointermove",
   (event) => {
+    if (downloadDialog.open) return;
     if (gesture?.pointerID === event.pointerId) {
       if (gesture.kind === "wind") windFromPointer(event);
       else {
@@ -581,61 +582,24 @@ function applyWeather() {
   engine.reducedMotion = reducedMotion;
   engine.setTool(preferences.tool);
   engine.setWind(preferences.windX, preferences.windY);
-  engine.setIntensity(defrost ? 3 : intensity[preferences.intensity]);
+  engine.setIntensity(intensity[preferences.intensity]);
 }
 function updateControls() {
   for (const button of document.querySelectorAll("[data-intensity]"))
     button.setAttribute(
       "aria-pressed",
-      String(
-        button.dataset.intensity ===
-          (defrost ? "flurry" : preferences.intensity),
-      ),
+      String(button.dataset.intensity === preferences.intensity),
     );
   for (const button of document.querySelectorAll("[data-tool]"))
     button.setAttribute(
       "aria-pressed",
       String(button.dataset.tool === preferences.tool),
     );
-  pauseButton.setAttribute("aria-pressed", String(preferences.paused));
-  pauseButton.setAttribute(
-    "aria-label",
-    preferences.paused ? "Resume snowfall" : "Pause snowfall",
-  );
-  pauseButton
-    .querySelector("use")
-    ?.setAttribute(
-      "href",
-      `./assets/icons.svg#${preferences.paused ? "play" : "pause"}`,
-    );
-  document.querySelector("#forecast-label").textContent = defrost
-    ? "Defrost advisory"
-    : preferences.paused
-      ? "Forecast on hold"
-      : {
-          light: "A quiet flurry",
-          steady: "Lightly festive",
-          flurry: "Snow business",
-        }[preferences.intensity];
   drawWind();
   updateCursor();
 }
-function setPaused(value) {
-  endGesture();
-  preferences.paused = value;
-  pointer = null;
-  engine.resetPointer();
-  lastPhysics = 0;
-  persist();
-  updateControls();
-  drawDirty = true;
-  wake();
-}
-pauseButton.addEventListener("click", () => setPaused(!preferences.paused));
 for (const button of document.querySelectorAll("[data-intensity]"))
   button.addEventListener("click", () => {
-    defrost = null;
-    document.body.classList.remove("defrosted");
     preferences.intensity = button.dataset.intensity;
     applyWeather();
     persist();
@@ -791,17 +755,23 @@ function clearSnow() {
 }
 document.querySelector("#clear-snow").addEventListener("click", clearSnow);
 document.querySelector("#tidy-desktop").addEventListener("click", tidy);
-function defrostMariah() {
-  defrost = { expires: performance.now() + 12000 };
-  document.body.classList.add("defrosted");
-  if (preferences.paused) setPaused(false);
-  applyWeather();
-  updateControls();
-  toast("Mariah has left the freezer. November has been notified.");
+const mariahAudio = document.querySelector("#mariah-audio");
+function playMariah() {
+  mariahAudio.pause();
+  mariahAudio.currentTime = 0;
+  mariahAudio.play()?.catch(() => toast("The sound couldn’t play. Give it another try."));
 }
-document
-  .querySelector("#defrost-button")
-  .addEventListener("click", defrostMariah);
+for (const button of document.querySelectorAll("[data-play-mariah]"))
+  button.addEventListener("click", playMariah);
+
+setupDownloadFlow({
+  onOpen() {
+    endGesture();
+    pointer = null;
+    engine.resetPointer();
+    updateCursor();
+  },
+});
 
 function terminalLine(text, className = "response") {
   const line = document.createElement("p");
@@ -837,10 +807,7 @@ document.querySelector("#terminal-form").addEventListener("submit", (event) => {
       terminalOutput.replaceChildren();
       break;
     case "snow":
-      defrost = null;
-      document.body.classList.remove("defrosted");
       preferences.intensity = "flurry";
-      setPaused(false);
       applyWeather();
       persist();
       updateControls();
@@ -863,16 +830,14 @@ document.querySelector("#terminal-form").addEventListener("submit", (event) => {
       break;
     case "defrost":
     case "mariah":
-      defrostMariah();
-      terminalLine(
-        "Seasonal containment breach. Twelve seconds of festive weather.",
-      );
+      playMariah();
       break;
   }
   wake();
 });
 
 document.addEventListener("keydown", (event) => {
+  if (downloadDialog.open) return;
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();
     openWindow("terminal");
@@ -961,12 +926,6 @@ function frame(timestamp) {
   lastFrame = timestamp;
   if (layoutDirty) layout();
   if (geometryDirty) syncGeometry();
-  if (defrost && timestamp >= defrost.expires) {
-    defrost = null;
-    document.body.classList.remove("defrosted");
-    applyWeather();
-    updateControls();
-  }
   if (toastUntil && timestamp >= toastUntil) {
     toastUntil = 0;
     toastElement.classList.remove("visible");
@@ -991,10 +950,7 @@ function frame(timestamp) {
     drawWind();
   }
   const fps = reducedMotion ? 15 : mobile ? 20 : 30;
-  if (
-    !preferences.paused &&
-    (!lastPhysics || timestamp - lastPhysics >= 1000 / fps - 0.5)
-  ) {
+  if (!lastPhysics || timestamp - lastPhysics >= 1000 / fps - 0.5) {
     const dt = lastPhysics ? (timestamp - lastPhysics) / 1000 : 1 / fps;
     lastPhysics = timestamp;
     const position =
@@ -1012,11 +968,7 @@ function frame(timestamp) {
     drawDirty = false;
   }
   updateClock();
-  if (!preferences.paused || windSpring.active || toastUntil || defrost) wake();
-  else {
-    lastPhysics = 0;
-    lastFrame = 0;
-  }
+  wake();
 }
 
 layout();

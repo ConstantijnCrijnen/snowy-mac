@@ -60,5 +60,5 @@ test("malformed and unavailable storage keep the desktop usable", () => {
   });
   assert.equal(invalid.windX, 1);
   assert.equal(invalid.tool, "glove");
-  assert.equal(invalid.paused, false);
+  assert.equal("paused" in invalid, false);
 });

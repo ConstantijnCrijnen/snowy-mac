@@ -3,7 +3,6 @@ export const defaults = Object.freeze({
   tool: "glove",
   windX: 0.12,
   windY: 0,
-  paused: false,
 });
 const finite = (x, fallback) =>
   typeof x === "number" && Number.isFinite(x)
@@ -18,7 +17,6 @@ export function validatePreferences(value) {
     tool: ["glove", "shovel"].includes(v.tool) ? v.tool : defaults.tool,
     windX: finite(v.windX, defaults.windX),
     windY: finite(v.windY, defaults.windY),
-    paused: typeof v.paused === "boolean" ? v.paused : defaults.paused,
   };
 }
 export function readPreferences(storage) {

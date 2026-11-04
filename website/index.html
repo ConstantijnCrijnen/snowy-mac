@@ -8,7 +8,7 @@
     />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
     />
     <meta name="theme-color" content="#102c4c" />
     <meta
@@ -44,19 +44,8 @@
         >
       </nav>
       <div class="menu-right">
-        <span class="forecast"
-          ><span class="weather-dot"></span
-          ><span id="forecast-label">Lightly festive</span></span
-        ><button
-          id="pause-button"
-          class="menu-pause"
-          aria-label="Pause snowfall"
-          aria-pressed="false"
-        >
-          <svg aria-hidden="true">
-            <use href="./assets/icons.svg#pause" />
-          </svg></button
-        ><time id="clock" aria-label="Local time">Snow o’clock</time>
+        <button data-open="letter">Wish list</button>
+        <time id="clock" aria-label="Local time">Snow o’clock</time>
       </div>
     </header>
 
@@ -110,16 +99,18 @@
           </svg>
           <h1>Snowy</h1>
           <p class="welcome-subtitle">A little winter for your Mac.</p>
-          <a
+          <button
             id="download"
             class="aqua-button download-button"
-            href="https://github.com/soloiaros/snowy-mac/releases/latest/download/Snowy-macOS-arm64.zip"
+            type="button"
+            aria-haspopup="dialog"
+            aria-controls="download-dialog"
             ><svg aria-hidden="true">
               <use href="./assets/icons.svg#laptop" /></svg
-            >Get Snowy for Mac</a
+            >Get Snowy for Mac</button
           >
           <p class="download-detail">
-            Free & open source. macOS 14+, Apple silicon.
+            Pay what you want, including $0. macOS 14+, Apple silicon.
           </p>
           <a
             class="quiet-link"
@@ -265,7 +256,6 @@
               <p>Stretch the wind arrow. Make a blizzard.</p>
             </li>
           </ol>
-          <p class="note-footer">The desktop is yours to rearrange.</p>
         </div>
         <button class="resize-grip" aria-label="Resize Read me window"></button>
       </section>
@@ -357,15 +347,20 @@
         </header>
         <div class="window-body letter-body">
           <span class="letter-stamp" aria-hidden="true">✳</span>
-          <h2>Dear winter,</h2>
-          <p>
-            I’d like a quieter desktop,<br />a really good cup of something,<br />and
-            absolutely no snow in my keyboard.
-          </p>
-          <p>Love,<br />the person moving all these windows</p>
-          <button id="defrost-button" class="mini-button">
-            P.S. Has anyone checked on Mariah?
-          </button>
+          <h2>A small wish list.</h2>
+          <p>The best way to support my work is to follow along.</p>
+          <div class="social-links">
+            <a href="https://www.instagram.com/archieauburn/" target="_blank" rel="noopener noreferrer">Instagram <span aria-hidden="true">↗</span></a>
+            <a href="https://www.tiktok.com/@archieauburn" target="_blank" rel="noopener noreferrer">TikTok <span aria-hidden="true">↗</span></a>
+          </div>
+          <form id="support-form" class="support-form" novalidate>
+            <label for="support-amount">Really enjoying Snowy?<br />You can throw in a buck or two.</label>
+            <div class="support-input-row">
+              <div class="amount-field"><span aria-hidden="true">$</span><input id="support-amount" name="amount" inputmode="decimal" type="text" value="2" maxlength="16" aria-label="Support amount in US dollars" aria-describedby="support-feedback" autocomplete="off" /></div>
+              <button class="mini-button" type="submit">Support Snowy</button>
+            </div>
+            <p id="support-feedback" class="payment-feedback" role="status" hidden></p>
+          </form>
         </div>
         <button
           class="resize-grip"
@@ -387,13 +382,13 @@
       </button>
       <span class="desktop-caption">Drag a window. Make a little weather.</span>
       <footer class="desktop-footer">
-        <span>Made for the joy of it.</span
-        ><a
+        <a
           href="https://github.com/soloiaros/snowy-mac"
           target="_blank"
           rel="noopener noreferrer"
           >View on GitHub</a
         ><button id="tidy-desktop">Tidy desktop</button>
+        <button data-play-mariah aria-label="Play the Mariah defrosting sound">Defrost Mariah</button>
       </footer>
     </main>
 
@@ -437,6 +432,36 @@
         ><span class="dock-tooltip">Clear snow</span>
       </button>
     </nav>
+    <dialog id="download-dialog" class="download-dialog" aria-labelledby="download-title" aria-describedby="download-description download-later">
+      <header class="dialog-titlebar">
+        <div class="traffic-lights"><button id="download-close" class="light close" aria-label="Close download window" type="button"></button></div>
+        <span>A little winter, your price</span>
+      </header>
+      <div class="download-dialog-body">
+        <svg class="dialog-app-icon" aria-hidden="true"><use href="./assets/icons.svg#snow" /></svg>
+        <h2 id="download-title">What feels right to you?</h2>
+        <p id="download-description">Snowy is yours at any price. Yes, $0 too.</p>
+        <form id="download-form" novalidate>
+          <label for="download-amount">Your price <span>(USD)</span></label>
+          <div class="amount-field download-amount-field"><span aria-hidden="true">$</span><input id="download-amount" name="amount" type="text" inputmode="decimal" maxlength="16" value="0" autocomplete="off" aria-describedby="download-feedback" autofocus /></div>
+          <div class="price-presets" role="group" aria-label="Suggested amounts in US dollars">
+            <button type="button" data-amount="0" aria-pressed="true">$0</button>
+            <button type="button" data-amount="1" aria-pressed="false">$1</button>
+            <button type="button" data-amount="2" aria-pressed="false">$2</button>
+            <button type="button" data-amount="5" aria-pressed="false">$5</button>
+          </div>
+          <p id="download-later">Try it first. If you enjoy the snow, you can always come back and donate later.</p>
+          <p id="download-feedback" class="payment-feedback" role="status" hidden></p>
+          <button id="download-free" class="quiet-button" type="button" hidden>Download for $0 instead</button>
+          <div class="dialog-actions">
+            <button id="download-cancel" class="mini-button" type="button">Cancel</button>
+            <button id="download-submit" class="aqua-button" type="submit">Download Snowy</button>
+          </div>
+        </form>
+        <p class="install-detail">Open the DMG, then drag Snowy into Applications.</p>
+      </div>
+    </dialog>
+    <audio id="mariah-audio" preload="none" src="./assets/defrosting-mariah.mp3"></audio>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <div id="cursor-tool" class="cursor-tool" aria-hidden="true"></div>
     <noscript

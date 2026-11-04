@@ -12,6 +12,7 @@ const mime = {
   ".png": "image/png",
   ".webp": "image/webp",
   ".ico": "image/x-icon",
+  ".mp3": "audio/mpeg",
 };
 const port = Number(process.env.PORT || 4173);
 http

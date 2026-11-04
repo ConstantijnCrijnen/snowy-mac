@@ -79,9 +79,12 @@ try {
       mobile: "passed",
       reducedMotion: "passed",
       storage: "passed",
+      download: "passed",
+      support: "passed",
+      audio: "passed",
     });
     console.log(
-      `Browser check ${run}/${runs}: desktop, mobile, reduced motion and storage passed.`,
+      `Browser check ${run}/${runs}: desktop, mobile, reduced motion, storage, download, support and audio passed.`,
     );
   }
   await writeFile(
@@ -187,6 +190,7 @@ async function page(width, height, mobile = false) {
   };
   await send("Page.enable");
   await send("Runtime.enable");
+  await send("Network.enable");
   await send("Emulation.setDeviceMetricsOverride", {
     width,
     height,
@@ -292,12 +296,14 @@ async function desktopCheck(run) {
     );
     await p.wait("SnowyDesktop.engine.stats.falling > 0");
     if (run === 1) await p.screenshot("desktop");
-    await p.click("#pause-button");
-    assert.equal(
-      await p.evaluate(
-        'document.querySelector("#pause-button").getAttribute("aria-pressed")',
-      ),
-      "true",
+    assert.ok(
+      await p.evaluate('!document.querySelector("#pause-button, #forecast-label")'),
+      "The menu has no stop button or snowfall state label",
+    );
+    // Hold only the simulation clock while testing geometry transport; there is
+    // no user-facing pause state or stored preference in the website anymore.
+    await p.evaluate(
+      "window.__snowyOriginalStep = SnowyDesktop.engine.step; SnowyDesktop.engine.step = () => {}; true",
     );
     const before = await p.evaluate("SnowyDesktop.engine.stats.totalMass");
     const bar = await p.bounds("#window-welcome .titlebar");
@@ -353,14 +359,69 @@ async function desktopCheck(run) {
     );
     await p.click("#clear-snow");
     assert.ok(await p.evaluate("SnowyDesktop.engine.stats.totalMass < .001"));
-    await p.click("#pause-button");
+    await p.evaluate(
+      "SnowyDesktop.engine.step = window.__snowyOriginalStep; delete window.__snowyOriginalStep; true",
+    );
     await p.wait("SnowyDesktop.engine.stats.totalMass > 0");
+    await downloadCheck(p, run);
+    await supportCheck(p);
+    await p.evaluate(`(() => {
+      window.__snowyAudioPlays = [];
+      HTMLMediaElement.prototype.play = function () {
+        window.__snowyAudioPlays.push(this.id);
+        return Promise.resolve();
+      };
+      return true;
+    })()`);
+    const snowfallBeforeAudio = await p.evaluate(
+      'document.querySelector("[data-intensity][aria-pressed=true]").dataset.intensity',
+    );
     await p.click('#dock [data-open="terminal"]');
     await p.send("Input.insertText", { text: "mariah" });
     await p.key("Enter", "Enter", 13);
-    assert.ok(
-      await p.evaluate('document.body.classList.contains("defrosted")'),
+    assert.deepEqual(
+      await p.evaluate("window.__snowyAudioPlays"),
+      ["mariah-audio"],
+      "The Mariah terminal command plays the supplied sound",
     );
+    assert.equal(
+      await p.evaluate(
+        'document.querySelector("[data-intensity][aria-pressed=true]").dataset.intensity',
+      ),
+      snowfallBeforeAudio,
+      "The sound does not change snowfall",
+    );
+    assert.ok(
+      await p.evaluate('!document.body.classList.contains("defrosted")'),
+      "The Mariah command no longer starts a weather effect",
+    );
+    assert.equal(
+      await p.evaluate('document.querySelector("#mariah-audio").preload'),
+      "none",
+      "Audio is not fetched speculatively",
+    );
+    const media = await p.evaluate(`new Promise(resolve => {
+      const audio = new Audio(document.querySelector("#mariah-audio").src);
+      audio.preload = "metadata";
+      const timeout = setTimeout(() => resolve({ error: "metadata timeout" }), 8000);
+      audio.addEventListener("loadedmetadata", () => {
+        clearTimeout(timeout);
+        resolve({ duration: audio.duration });
+      }, { once: true });
+      audio.addEventListener("error", () => {
+        clearTimeout(timeout);
+        resolve({ error: audio.error?.code || "media error" });
+      }, { once: true });
+    })`);
+    assert.ok(Number.isFinite(media.duration) && media.duration > 0,
+      "The supplied MP3 is served and decodes successfully: " + JSON.stringify(media));
+    await p.click("[data-play-mariah]");
+    assert.deepEqual(
+      await p.evaluate("window.__snowyAudioPlays"),
+      ["mariah-audio", "mariah-audio"],
+      "The desktop Mariah interaction plays the same supplied sound",
+    );
+    await p.evaluate('document.querySelector("#terminal-input").focus()');
     await p.send("Input.insertText", {
       text: '<img src=x onerror="window.__snowy_xss=1">',
     });
@@ -413,6 +474,126 @@ async function desktopCheck(run) {
   }
 }
 
+async function setAmount(p, selector, value) {
+  await p.evaluate(
+    `document.querySelector(${JSON.stringify(selector)}).focus(); document.querySelector(${JSON.stringify(selector)}).select(); true`,
+  );
+  await p.send("Input.insertText", { text: value });
+  await p.frame();
+}
+
+async function downloadCheck(p, run, mobile = false) {
+  await p.evaluate(`(() => {
+    window.__snowyDownloads = [];
+    const click = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () {
+      if (this.href.includes("/releases/") && this.href.endsWith(".dmg")) {
+        window.__snowyDownloads.push(this.href);
+        return;
+      }
+      return click.call(this);
+    };
+    return true;
+  })()`);
+  const windowsBefore = await p.evaluate("SnowyDesktop.visibleWindowIDs");
+  await p.click("#download");
+  assert.ok(await p.evaluate('document.querySelector("#download-dialog").open'));
+  assert.equal(
+    await p.evaluate('document.querySelector("#download-amount").value'),
+    "0",
+    "Download defaults to a free copy",
+  );
+  assert.ok(
+    await p.evaluate('document.querySelector("#download-dialog").contains(document.activeElement)'),
+    "Keyboard focus enters the download window",
+  );
+  const modal = await p.bounds("#download-dialog");
+  assert.ok(
+    await p.evaluate('(() => { const r=document.querySelector("#download-dialog").getBoundingClientRect(); return r.x>=0 && r.right<=innerWidth && r.y>=0 && r.bottom<=innerHeight; })()'),
+    `The ${mobile ? "phone" : "desktop"} download window fits the viewport`,
+  );
+  assert.ok(modal.width > 200 && modal.height > 200);
+  if (run === 1) await p.screenshot(mobile ? "mobile-download" : "desktop-download");
+  await p.key("Escape", "Escape", 27);
+  assert.ok(!(await p.evaluate('document.querySelector("#download-dialog").open')));
+  assert.equal(
+    await p.evaluate("document.activeElement?.id"),
+    "download",
+    "Escape restores focus to the download button",
+  );
+  assert.deepEqual(
+    await p.evaluate("SnowyDesktop.visibleWindowIDs"),
+    windowsBefore,
+    "Dismissing the dialog does not close a desktop window",
+  );
+
+  await p.click("#download");
+  await setAmount(p, "#download-amount", "2.50");
+  await p.click("#download-submit");
+  assert.match(
+    await p.evaluate('document.querySelector("#download-feedback").textContent'),
+    /aren.t available|not available|unavailable|not connected|coming soon/i,
+    "Paid checkout clearly remains unavailable",
+  );
+  assert.deepEqual(await p.evaluate("window.__snowyDownloads"), []);
+  assert.equal(await p.evaluate("location.href"), baseURL);
+
+  await p.evaluate('document.querySelector("#download-feedback").textContent = ""; true');
+  await setAmount(p, "#download-amount", "-1");
+  await p.click("#download-submit");
+  assert.ok(
+    await p.evaluate('!document.querySelector("#download-form").checkValidity() || !!document.querySelector("#download-feedback").textContent.trim()'),
+    "Invalid amounts show feedback or native validation",
+  );
+  assert.deepEqual(await p.evaluate("window.__snowyDownloads"), []);
+
+  await setAmount(p, "#download-amount", "0");
+  await p.click("#download-submit");
+  assert.deepEqual(
+    await p.evaluate("window.__snowyDownloads"),
+    ["https://github.com/soloiaros/snowy-mac/releases/latest/download/Snowy-macOS-arm64.dmg"],
+    "$0 immediately starts the DMG download without checkout",
+  );
+  if (await p.evaluate('document.querySelector("#download-dialog").open'))
+    await p.click("#download-close");
+  await p.click("#download");
+  await setAmount(p, "#download-amount", "5");
+  await p.click("#download-submit");
+  await p.click("#download-free");
+  assert.equal(
+    (await p.evaluate("window.__snowyDownloads")).length,
+    2,
+    "The free fallback starts a download even when a positive amount was entered",
+  );
+  if (await p.evaluate('document.querySelector("#download-dialog").open'))
+    await p.click("#download-close");
+  const checkoutRequests = client.events.filter(
+    (event) => event.sessionId === p.sessionId &&
+      event.method === "Network.requestWillBeSent" &&
+      /(?:^|\.)polar\.sh$/.test(new URL(event.params.request.url).hostname),
+  );
+  assert.deepEqual(checkoutRequests, [], "No Polar requests happen before integration");
+}
+
+async function supportCheck(p) {
+  await p.click('.menu-right [data-open="letter"]');
+  await setAmount(p, "#support-amount", "2");
+  await p.evaluate('document.querySelector("#support-form").requestSubmit(); true');
+  await p.frame();
+  assert.match(
+    await p.evaluate('document.querySelector("#support-feedback").textContent'),
+    /aren.t available|not available|unavailable|not connected|coming soon/i,
+    "Support does not claim a donation succeeded before payments are connected",
+  );
+  assert.equal(await p.evaluate("location.href"), baseURL);
+  await setAmount(p, "#support-amount", "0");
+  await p.evaluate('document.querySelector("#support-form").requestSubmit(); true');
+  await p.frame();
+  assert.equal((await p.evaluate("window.__snowyDownloads")).length, 2,
+    "A zero support amount does not initiate another download");
+  await p.click('#window-letter [data-close]');
+}
+
 async function mobileCheck(run) {
   const p = await page(390, 844, true);
   try {
@@ -426,6 +607,7 @@ async function mobileCheck(run) {
       "Phone download is visible and readable",
     );
     if (run === 1) await p.screenshot("mobile");
+    await downloadCheck(p, run, true);
     await p.click("#sweep-mode");
     assert.ok(
       await p.evaluate('document.body.classList.contains("sweep-mode")'),

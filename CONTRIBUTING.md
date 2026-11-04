@@ -42,9 +42,9 @@ Update the version and build number in `App/Info.plist`, run the checks, then pa
 ./scripts/package-release.sh
 ```
 
-This writes an architecture-labelled ZIP and SHA-256 checksum into `build/releases/`. It verifies the app signature before packaging and verifies the extracted archive again. It doesn’t launch the app.
+This writes an architecture-labelled DMG, ZIP, and their SHA-256 checksums into `build/releases/`. The DMG contains Snowy.app, an Applications shortcut, and installation instructions. Packaging verifies the app signature, the extracted ZIP, the disk-image checksum, and the app inside a read-only, non-browsed DMG mount. It doesn’t launch the app.
 
-Push a matching `v<version>` tag, then manually run the **Release** workflow with that tag. The workflow checks that the tag matches `Info.plist`, runs tests, builds the app, and attaches the ZIP and checksum to the GitHub release. It uses a local ad-hoc signature; Developer ID signing and notarization are not configured.
+Push a matching `v<version>` tag, then manually run the **Release** workflow with that tag. The workflow checks that the tag matches `Info.plist`, runs tests, builds the app, and attaches the DMG, ZIP, and checksums to the GitHub release. It uses a local ad-hoc signature; Developer ID signing and notarization are not configured.
 
 ## Keep it original
 
