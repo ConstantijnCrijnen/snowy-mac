@@ -1,0 +1,58 @@
+name: Checks
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Mac app
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Prepare Metal toolchain
+        run: |
+          if ! xcrun -sdk macosx metal --version >/dev/null 2>&1; then
+            xcodebuild -downloadComponent MetalToolchain
+          fi
+      - name: Test geometry and physics
+        run: swift test
+      - name: Build and verify app
+        run: ./scripts/build-app.sh
+      - name: Package app
+        run: ./scripts/package-release.sh --skip-build
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Snowy-macOS
+          path: |
+            build/releases/*.zip
+            build/releases/*.sha256
+          if-no-files-found: error
+
+  website:
+    name: Browser desktop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Test browser physics
+        run: npm --prefix website test
+      - name: Build static website
+        run: npm --prefix website run build
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Snowy-website
+          path: website/dist/
+          if-no-files-found: error
