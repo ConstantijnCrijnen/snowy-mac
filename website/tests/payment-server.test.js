@@ -8,6 +8,7 @@ function environment() {
   let created=0; const objects=new Map();
   const env={POLAR_ACCESS_TOKEN:'test',POLAR_WEBHOOK_SECRET:secret,POLAR_PRODUCT_ID:'snowy-product',ASSETS:{fetch:()=>new Response('asset')},
     POLAR_FETCH:async(url,options)=>{
+      assert.equal(options.redirect,'manual');
       if(options.method==='POST'){created++;return Response.json({id:'checkout-id',url:'https://polar.sh/checkout/test'});}
       return Response.json({product_id:'snowy-product',currency:'usd',status:'succeeded',amount:200});
     }};

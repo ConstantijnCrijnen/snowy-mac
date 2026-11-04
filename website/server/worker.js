@@ -29,10 +29,10 @@ export function checkoutURL(value) {
 }
 async function polar(env, path, options = {}) {
   const response = await (env.POLAR_FETCH || fetch)('https://api.polar.sh/v1/' + path, {
-    ...options, redirect: 'error', signal: AbortSignal.timeout(12000),
+    ...options, redirect: 'manual', signal: AbortSignal.timeout(12000),
     headers: { Authorization: `Bearer ${env.POLAR_ACCESS_TOKEN}`, 'Polar-Version': '2026-10', 'Content-Type': 'application/json', 'User-Agent': 'Snowy/0.9.0' },
   });
-  if (!response.ok) throw Error('provider');
+  if (!response.ok) { console.error('Polar request failed', response.status); throw Error('provider'); }
   return response.json();
 }
 function state(env, name) { return env.PAYMENTS.get(env.PAYMENTS.idFromName(name)); }
@@ -127,7 +127,7 @@ export class PaymentState {
         if (!checkoutURL(checkout.url) || !checkout.id) throw Error('provider url');
         await storage.put('checkout',{id:checkout.id,url:checkout.url,amountCents:value.amountCents,context:value.context});
         return json({url:checkout.url});
-      } catch { return json({error:'Couldn’t open checkout. Reload to try again, or download for $0.'},503); }
+      } catch (error) { console.error('Checkout provider error', error.name, 'provider request or response rejected'); return json({error:'Couldn’t open checkout. Reload to try again, or download for $0.'},503); }
     });
   }
 }
