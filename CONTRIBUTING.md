@@ -49,3 +49,7 @@ Push a matching `v<version>` tag, then manually run the **Release** workflow wit
 ## Keep it original
 
 Only submit code and assets you have permission to share under the repository’s license. Window Sweaters is a README-style reference, not a source-code dependency. Please keep seasonal jokes light and optional; no surprise audio.
+
+## Commit history
+
+Use Angular-style Conventional Commit subjects: `type(scope): summary`. Describe one logical change, use an imperative summary, and use actual dates for new work.
