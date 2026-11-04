@@ -37,8 +37,10 @@ The earlier private Sites preview remains a separate publication.
 - `_headers` supplies the CSP, content-type protection, referrer policy, and
   disabled camera/microphone/geolocation permissions.
 - Missing assets return 404; there is no application-shell fallback.
-- Default ETag/revalidation caching keeps unversioned JavaScript, CSS, and audio
-  current after deploys. The small MP3 is loaded only after a user interaction.
+- ETag/revalidation caching keeps unversioned JavaScript, CSS, and audio current
+  after deploys. The `no-transform` directive prevents zone-level automatic Web
+  Analytics script injection on this site, without changing other hostnames.
+  The small MP3 is loaded only after a user interaction.
 - The free DMG is a public GitHub release asset and needs no checkout or login.
 
 After deployment, verify the main page, JavaScript, SVG favicon, audio MIME/range
@@ -47,4 +49,5 @@ benchmark is part of deployment verification.
 
 References: [Static Assets](https://developers.cloudflare.com/workers/static-assets/),
 [Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/),
-[asset headers](https://developers.cloudflare.com/workers/static-assets/headers/).
+[asset headers](https://developers.cloudflare.com/workers/static-assets/headers/),
+[automatic analytics injection](https://developers.cloudflare.com/web-analytics/faq/).
