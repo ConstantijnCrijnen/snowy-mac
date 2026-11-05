@@ -60,40 +60,41 @@ mkdir "$staging_dir/verify"
 ditto -x -k "$staging_dir/$archive_name" "$staging_dir/verify"
 codesign --verify --deep --strict "$staging_dir/verify/Snowy.app"
 
-# The disk image is a conventional drag-to-Applications install, without an
-# installer package, privileged scripts, or any automatic app launch.
-mkdir "$staging_dir/image"
+# Prepare the Finder view directly on an owned writable staging image. This
+# captures its real volume/file IDs, without asking Finder to open anything.
+python3 -m venv "$staging_dir/tools"
+layout_python="$staging_dir/tools/bin/python"
+"$layout_python" -m pip install --quiet --disable-pip-version-check \
+  --only-binary=:all: --require-hashes -r "$project_root/scripts/dmg-layout-requirements.txt"
+mkdir -p "$staging_dir/image/.background" "$staging_dir/art" "$staging_dir/mount"
+swift "$project_root/scripts/render-install-art.swift" background "$staging_dir/art"
+tiffutil -cathidpicheck "$staging_dir/art/Snowy.png" "$staging_dir/art/Snowy@2x.png" \
+  -out "$staging_dir/image/.background/Snowy.tiff"
 ditto "$app_dir" "$staging_dir/image/Snowy.app"
 ln -s /Applications "$staging_dir/image/Applications"
-cat > "$staging_dir/image/Install Snowy.txt" <<'INSTALL'
-Install Snowy
-
-1. Drag Snowy.app onto the Applications shortcut.
-2. Eject the Snowy disk image.
-3. Open Snowy from Applications. Its snowflake menu appears in the menu bar.
-
-Requires macOS 14 or later. This download is for the architecture in its filename.
-
-Updating? Quit Snowy from its snowflake menu before replacing the app.
-
-This build is locally signed and is not notarized by Apple. If macOS blocks it,
-try opening Snowy, then go to System Settings > Privacy & Security > Open Anyway.
-
-Source and help: https://github.com/soloiaros/snowy-mac
-INSTALL
-hdiutil create -quiet -volname Snowy -fs HFS+ -format UDZO \
-  -srcfolder "$staging_dir/image" "$staging_dir/$dmg_name"
+cp "$app_dir/Contents/Resources/Snowy.icns" "$staging_dir/image/.VolumeIcon.icns"
+hdiutil create -quiet -volname Snowy -fs HFS+ -format UDRW \
+  -srcfolder "$staging_dir/image" "$staging_dir/writable.dmg"
+hdiutil attach -quiet -readwrite -nobrowse -noautoopen -owners off \
+  -mountpoint "$staging_dir/mount" "$staging_dir/writable.dmg"
+mounted=1
+"$layout_python" "$project_root/scripts/dmg-layout.py" write "$staging_dir/mount"
+/usr/bin/SetFile -a C "$staging_dir/mount"
+hdiutil detach -quiet "$staging_dir/mount"
+mounted=0
+hdiutil convert -quiet "$staging_dir/writable.dmg" -format UDZO \
+  -o "$staging_dir/$dmg_name"
 hdiutil verify -quiet "$staging_dir/$dmg_name"
-mkdir "$staging_dir/mount"
 hdiutil attach -quiet -readonly -nobrowse -noautoopen \
   -mountpoint "$staging_dir/mount" "$staging_dir/$dmg_name"
 mounted=1
+"$layout_python" "$project_root/scripts/dmg-layout.py" verify "$staging_dir/mount"
 codesign --verify --deep --strict "$staging_dir/mount/Snowy.app"
 if [[ ! -L "$staging_dir/mount/Applications" || "$(readlink "$staging_dir/mount/Applications")" != /Applications ]]; then
   print -u2 "The disk image is missing its Applications shortcut."
   exit 1
 fi
-test -f "$staging_dir/mount/Install Snowy.txt"
+test -f "$staging_dir/mount/.VolumeIcon.icns"
 hdiutil detach -quiet "$staging_dir/mount"
 mounted=0
 (

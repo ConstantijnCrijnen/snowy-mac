@@ -10,8 +10,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var weatherItems: [NSMenuItem] = []
     private var windPopover: NSPopover?
     private var toolItems: [NSMenuItem] = []
+    private var welcomeWindow: WelcomeWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Read the persisted domain before coordinator startup can write settings.
+        let defaults = UserDefaults.standard
+        let domainName = Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName
+        let shouldShowWelcome = FirstLaunchPolicy.shouldPresent(in: defaults, domainName: domainName)
         buildMenu()
         do {
             let coordinator = try DesktopCoordinator()
@@ -22,9 +27,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             pauseItem.isEnabled = false
         }
         updateMenu()
+        if coordinator != nil {
+            FirstLaunchPolicy.markConsidered(in: defaults)
+            if shouldShowWelcome {
+                let welcome = WelcomeWindowController()
+                welcome.onClose = { [weak self] in self?.welcomeWindow = nil }
+                welcomeWindow = welcome
+                welcome.present()
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        welcomeWindow?.close()
         windPopover?.performClose(nil)
         coordinator?.stop()
     }

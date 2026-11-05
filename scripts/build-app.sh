@@ -31,6 +31,9 @@ xcrun -sdk macosx metal -mmacosx-version-min=14.0 -c \
   "$project_root/Sources/Snowy/Shaders/Snow.metal" -o "$project_root/.build/shaders/Snow.air"
 xcrun -sdk macosx metallib "$project_root/.build/shaders/Snow.air" \
   -o "$staged_app/Contents/Resources/Snow.metallib"
+mkdir "$staging_dir/Snowy.iconset"
+swift "$project_root/scripts/render-install-art.swift" icon "$staging_dir/Snowy.iconset"
+iconutil -c icns "$staging_dir/Snowy.iconset" -o "$staged_app/Contents/Resources/Snowy.icns"
 codesign --force --sign - "$staged_app"
 codesign --verify --deep --strict "$staged_app"
 # Replace only the generated bundle, after every build and signing step succeeds.

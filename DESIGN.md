@@ -31,3 +31,10 @@ Missing or transparent Dock records no longer leave the bottom Dock without coll
 Bottom Dock hover shrink releases profile area that can no longer fit on its shorter width or tapered shoulders. It uses the existing granular field and bounded reserve, preserving area without adding a separate Dock solver. Repeated snapshots do not release the same area twice. Vertical Dock records are rejected even when a missing process-role entry would otherwise classify their negative-level windows as widgets.
 
 The supplied screenshots and sketch were inspected directly. Source and headless regressions cover granular conservation/flow/compression, connected contour bounds, glove/shovel exclusion, new-versus-moving window behavior, saturation, rounded collisions, attachment, resource bounds, and wind/stretch math. Native UI and gesture feel have not been visually exercised, because the user requested no app launch/computer-control tools or benchmarks. No independent visual score is claimed. Native system controls/materials minimize custom assumptions, but exact host-frame alignment still needs the user's target desktop to verify.
+
+
+## Installer and welcome
+
+The installer uses the browser desktop’s midnight blue, Aqua arc, and winter ridges. Finder supplies the two real drag targets; the background supplies the instruction and arrow. The same glossy snowflake marks the app and mounted disk. Artwork is drawn offscreen at build time, and the image carries its own Finder layout and Retina background.
+
+The welcome window uses native buttons and three static illustrations. It introduces settled snow, sweeping and wind, then the menu bar. A version-independent preference records the presentation, so closing or skipping is final. Existing saved weather settings also suppress the welcome. An older installation that never saved any settings has no marker to distinguish it from a fresh setup. The walkthrough does not change weather preferences or add a render loop.

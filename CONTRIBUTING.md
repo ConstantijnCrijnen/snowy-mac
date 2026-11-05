@@ -42,7 +42,7 @@ Update the version and build number in `App/Info.plist`, run the checks, then pa
 ./scripts/package-release.sh
 ```
 
-This writes an architecture-labelled DMG, ZIP, and their SHA-256 checksums into `build/releases/`. The DMG contains Snowy.app, an Applications shortcut, and installation instructions. Packaging verifies the app signature, the extracted ZIP, the disk-image checksum, and the app inside a read-only, non-browsed DMG mount. It doesn’t launch the app.
+This writes an architecture-labelled DMG, ZIP, and their SHA-256 checksums into `build/releases/`. The DMG contains Snowy.app and an Applications shortcut over a Retina winter background. Packaging uses Python 3 with venv and pip to install two hash-pinned Finder metadata helpers in a temporary environment. It draws the artwork offscreen, writes Finder metadata directly to an owned staging image, and verifies the signed app, ZIP, disk-image checksum, background alias, and icon positions. It never opens Finder or launches Snowy.
 
 Push a matching `v<version>` tag, then manually run the **Release** workflow with that tag. The workflow checks that the tag matches `Info.plist`, runs tests, builds the app, and attaches the DMG, ZIP, and checksums to the GitHub release. It uses a local ad-hoc signature; Developer ID signing and notarization are not configured.
 
