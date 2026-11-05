@@ -65,7 +65,7 @@ extension SnowSimulation {
         var identifiers: Set<UInt64> = []
         let surfaces = input.prefix(256).filter { surface in
             surface.x.isFinite && surface.y.isFinite && surface.width.isFinite
-                && surface.width >= 16 && surface.width <= size.x + 1
+                && surface.width >= surface.minimumWidth && surface.width <= size.x + 1
                 && surface.x >= -1 && surface.x + surface.width <= size.x + 1
                 && surface.y >= 0 && surface.y <= size.y
                 && surface.visibleSpans.count <= 128
@@ -147,7 +147,7 @@ extension SnowSimulation {
                 var covered: Float = 0
                 for body in appeared {
                     guard body.id != drift.surface.id,
-                          !drift.surface.releasesSnowWhenRemoved || body.isElevated,
+                          !drift.surface.isElevated || body.isElevated,
                           x >= Float(body.bounds.minX), x <= Float(body.bounds.maxX) else { continue }
                     let edge = min(x - Float(body.bounds.minX), Float(body.bounds.maxX) - x)
                     let r = body.cornerRadius
@@ -174,7 +174,7 @@ extension SnowSimulation {
     private func pushSupportedSnow(with motion: BodyMotion) {
         let padding = looseSnow.cellSize * 0.65
         for drift in drifts where drift.surface.id != motion.new.id
-            && (!drift.surface.releasesSnowWhenRemoved || motion.new.isElevated) {
+            && (!drift.surface.isElevated || motion.new.isElevated) {
             let swept = motion.old.bounds.union(motion.new.bounds).insetBy(dx: -CGFloat(padding), dy: -CGFloat(padding))
             guard swept.maxX >= CGFloat(drift.surface.x), swept.minX <= CGFloat(drift.surface.x + drift.surface.width),
                   swept.maxY >= CGFloat(drift.surface.y - 32),

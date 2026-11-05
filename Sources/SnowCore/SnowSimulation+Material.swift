@@ -11,7 +11,7 @@ extension SnowSimulation {
 
     func captureCarriedSnowCollisions(to input: [Surface], motions: [BodyMotion]) {
         let surfaces = Dictionary(input.prefix(256).filter {
-            $0.x.isFinite && $0.y.isFinite && $0.width.isFinite && $0.width >= 16
+            $0.x.isFinite && $0.y.isFinite && $0.width.isFinite && $0.width >= $0.minimumWidth
                 && $0.width <= size.x + 1 && $0.x >= -1 && $0.x + $0.width <= size.x + 1
                 && $0.y >= 0 && $0.y <= size.y && $0.cornerRadius.isFinite
         }.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -26,8 +26,8 @@ extension SnowSimulation {
                 width: CGFloat(max(old.x + old.width, next.x + next.width) - min(old.x, next.x)),
                 height: CGFloat(abs(next.y - old.y) + max(old.cornerRadius, next.cornerRadius) + 32))
             let obstacles = motions.filter {
-                $0.old.id != old.id && $0.old.isElevated == old.releasesSnowWhenRemoved
-                    && $0.new.isElevated == next.releasesSnowWhenRemoved
+                $0.old.id != old.id && $0.old.isElevated == old.isElevated
+                    && $0.new.isElevated == next.isElevated
                     && $0.old.bounds.union($0.new.bounds).insetBy(dx: -CGFloat(pitch), dy: -CGFloat(pitch)).intersects(band)
             }
             guard !obstacles.isEmpty else { continue }
@@ -81,7 +81,7 @@ extension SnowSimulation {
                 var receiver: Surface?
                 var receiverLocalX: Float = 0
                 for target in drifts where target.surface.id != source.surface.id {
-                    guard target.surface.releasesSnowWhenRemoved == source.surface.releasesSnowWhenRemoved else { continue }
+                    guard target.surface.isElevated == source.surface.isElevated else { continue }
                     guard let destination = incoming[target.surface.id] else { continue }
                     var crossingLocal = source.surface.x + localX - target.surface.x
                     var time: Float = 0
@@ -136,8 +136,8 @@ extension SnowSimulation {
                 y: CGFloat(min(start.y, end.y) - radius), width: CGFloat(abs(end.x - start.x) + radius * 2),
                 height: CGFloat(abs(end.y - start.y) + radius * 2))
             for motion in motions where motion.old.id != source.surface.id
-                && motion.old.isElevated == source.surface.releasesSnowWhenRemoved
-                && motion.new.isElevated == next.releasesSnowWhenRemoved {
+                && motion.old.isElevated == source.surface.isElevated
+                && motion.new.isElevated == next.isElevated {
                 guard motion.old.bounds.union(motion.new.bounds).intersects(swept),
                       let hit = motion.contact(from: start, to: end, radius: radius), hit.time < time - 0.0001 else { continue }
                 if motion.old.id != receiverID || hit.normal.y > -0.5 { return true }

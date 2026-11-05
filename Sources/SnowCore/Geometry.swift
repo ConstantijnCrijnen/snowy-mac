@@ -25,11 +25,14 @@ public struct Surface: Equatable, Sendable {
     public var isDock: Bool
     public var cornerRadius: Float
     public var releasesSnowWhenRemoved: Bool
+    /// Spotlight renders above the desktop. Ordinary removable props stay on the desktop plane.
+    public var isElevated: Bool
+    public var minimumWidth: Float { releasesSnowWhenRemoved && !isElevated ? 5 : 16 }
 
     public init(id: UInt64, x: Float, y: Float, width: Float,
                 visibleSpans: [Span]? = nil, isDock: Bool = false,
                 cornerRadius: Float = 0, snowfallSpans: [Span]? = nil,
-                releasesSnowWhenRemoved: Bool = false) {
+                releasesSnowWhenRemoved: Bool = false, isElevated: Bool? = nil) {
         self.id = id
         self.x = x
         self.y = y
@@ -39,6 +42,7 @@ public struct Surface: Equatable, Sendable {
         self.isDock = isDock
         self.cornerRadius = cornerRadius.isFinite ? max(0, min(cornerRadius, width / 2)) : 0
         self.releasesSnowWhenRemoved = releasesSnowWhenRemoved
+        self.isElevated = isElevated ?? releasesSnowWhenRemoved
     }
 
     public func isExposed(at localX: Float) -> Bool {

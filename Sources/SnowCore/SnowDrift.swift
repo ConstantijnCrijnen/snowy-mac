@@ -25,15 +25,21 @@ public final class SnowDrift {
         snowfallCapacities = heights
         cornerWind = windEffects?.count == count ? windEffects! : Array(repeating: .neutral, count: count)
         let phase = Float(surface.id % 997) * 0.17
+        let taperWidth: Float = surface.width < 16 ? surface.width / 2 : 13
+        let limit: Float
+        if surface.id == DesktopSceneBuilder.groundID { limit = 28 }
+        else if surface.isDock { limit = 13 }
+        else if surface.releasesSnowWhenRemoved && !surface.isElevated {
+            limit = min(18, max(4, surface.width * 0.32))
+        } else { limit = 18 }
         for i in 0..<count {
             let x = Float(i) * spacing
-            let edge = surface.id == DesktopSceneBuilder.groundID ? 1 : min(1, min(x, surface.width - x) / 13)
+            let edge = surface.id == DesktopSceneBuilder.groundID ? 1 : min(1, min(x, surface.width - x) / taperWidth)
             let taper = edge * edge * (3 - 2 * edge)
             // Fixed broad lobes: no shimmering noise or random per-frame bumps.
             let lobe = 0.68 + sin(x * 0.027 + phase) * 0.18
                 + sin(x * 0.071 + phase * 2) * 0.09
                 + sin(x * 0.13 + phase) * 0.05
-            let limit: Float = surface.id == DesktopSceneBuilder.groundID ? 28 : (surface.isDock ? 13 : 18)
             capacities[i] = limit * taper
             baseCapacities[i] = limit * lobe * taper
             snowfallCapacities[i] = baseCapacities[i]

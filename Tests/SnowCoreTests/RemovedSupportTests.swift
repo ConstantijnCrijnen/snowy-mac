@@ -78,6 +78,27 @@ final class RemovedSupportTests: XCTestCase {
         XCTAssertEqual(total(simulation), 0)
     }
 
+    func testNarrowDesktopPropCollectsAndReleasesSnowOnTheDesktopPlane() throws {
+        let simulation = SnowSimulation(size: SIMD2(1000, 800), budget: SimulationBudget(flakes: 0))
+        let floor = DesktopSceneBuilder.build(displayBounds: display, menuInset: 24, windows: []).surfaces
+        let prop = Surface(id: 42, x: 40, y: 770, width: 8,
+                           releasesSnowWhenRemoved: true, isElevated: false)
+        let body = SolidBody(id: 42, bounds: CGRect(x: 40, y: 770, width: 8, height: 30))
+        simulation.updateScene(surfaces: floor + [prop], bodies: [body])
+        let cap = try XCTUnwrap(simulation.drifts.first { $0.surface.id == prop.id })
+        simulation.clear()
+        cap.accumulate(dt: 30, intensity: 1)
+        simulation.rebuildMesh()
+        XCTAssertGreaterThan(cap.height(at: 4), 1)
+        XCTAssertLessThanOrEqual(cap.height(at: 4), 4)
+        XCTAssertFalse(simulation.mesh.isEmpty)
+        XCTAssertTrue(simulation.elevatedMeshRanges.isEmpty)
+        let before = total(simulation)
+        simulation.updateScene(surfaces: floor, bodies: [])
+        XCTAssertEqual(total(simulation), before, accuracy: 0.1)
+        XCTAssertGreaterThan(simulation.looseSnow.totalMass, 0)
+    }
+
     func testDismissalPreservesAreaWhenGranularStorageIsUnavailable() {
         let simulation = SnowSimulation(size: SIMD2(1000, 800),
             budget: SimulationBudget(flakes: 0, debris: 0, cells: 24, surfaces: 3))

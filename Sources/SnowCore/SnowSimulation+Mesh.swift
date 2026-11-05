@@ -31,7 +31,7 @@ extension SnowSimulation {
                          SnowVertex(position: top1.position - SIMD2(0, 0.8), material: SIMD2(1, 0)))
                 }
             }
-            if surface.releasesSnowWhenRemoved, mesh.count > start {
+            if surface.isElevated, mesh.count > start {
                 if let previous = elevatedMeshRanges.last, previous.upperBound == start {
                     elevatedMeshRanges[elevatedMeshRanges.count - 1] = previous.lowerBound..<mesh.count
                 } else { elevatedMeshRanges.append(start..<mesh.count) }
