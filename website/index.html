@@ -461,6 +461,20 @@
         <p class="install-detail">Open the DMG, then drag Snowy into Applications.</p>
       </div>
     </dialog>
+    <dialog id="beta-dialog" class="download-dialog" aria-labelledby="beta-title" aria-describedby="beta-description">
+      <header class="dialog-titlebar">
+        <div class="traffic-lights"><button class="light close" aria-label="Close beta notice" form="beta-actions" type="submit"></button></div>
+        <span>Snowy</span>
+      </header>
+      <div class="download-dialog-body">
+        <svg class="dialog-app-icon" aria-hidden="true"><use href="./assets/icons.svg#snow" /></svg>
+        <h2 id="beta-title">Snowy is in beta</h2>
+        <p id="beta-description">If macOS blocks Snowy on first launch, go to <strong>System Settings → Privacy &amp; Security → Open Anyway</strong> and confirm for this download.</p>
+        <form id="beta-actions" class="dialog-actions" method="dialog">
+          <button class="aqua-button" type="submit" autofocus>Got it</button>
+        </form>
+      </div>
+    </dialog>
     <audio id="mariah-audio" preload="none" src="./assets/defrosting-mariah.mp3"></audio>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <div id="cursor-tool" class="cursor-tool" aria-hidden="true"></div>

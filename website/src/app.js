@@ -73,6 +73,7 @@ const windSpring = {
 const toastElement = document.querySelector("#toast");
 const cursorElement = document.querySelector("#cursor-tool");
 const downloadDialog = document.querySelector("#download-dialog");
+const betaDialog = document.querySelector("#beta-dialog");
 const windPad = document.querySelector("#wind-pad");
 const windArrow = document.querySelector("#wind-arrow");
 const terminalInput = document.querySelector("#terminal-input");
@@ -491,7 +492,7 @@ document.addEventListener("click", (event) => {
 document.addEventListener(
   "pointermove",
   (event) => {
-    if (downloadDialog.open) return;
+    if (downloadDialog.open || betaDialog.open) return;
     if (gesture?.pointerID === event.pointerId) {
       if (gesture.kind === "wind") windFromPointer(event);
       else {
@@ -764,15 +765,6 @@ function playMariah() {
 for (const button of document.querySelectorAll("[data-play-mariah]"))
   button.addEventListener("click", playMariah);
 
-setupDownloadFlow({
-  onOpen() {
-    endGesture();
-    pointer = null;
-    engine.resetPointer();
-    updateCursor();
-  },
-});
-
 function terminalLine(text, className = "response") {
   const line = document.createElement("p");
   line.className = className;
@@ -837,7 +829,7 @@ document.querySelector("#terminal-form").addEventListener("submit", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (downloadDialog.open) return;
+  if (downloadDialog.open || betaDialog.open) return;
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();
     openWindow("terminal");
@@ -977,6 +969,17 @@ activate(models.get("welcome"));
 updateDock();
 updateControls();
 updateClock();
+setupDownloadFlow({
+  onOpen() {
+    endGesture();
+    pointer = null;
+    engine.resetPointer();
+    updateCursor();
+  },
+  onSupportOpen() {
+    openWindow("letter");
+  },
+});
 Object.defineProperty(window, "SnowyDesktop", {
   value: Object.freeze({
     get engine() {

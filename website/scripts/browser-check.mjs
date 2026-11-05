@@ -563,8 +563,15 @@ async function downloadCheck(p, run, mobile = false) {
     ["https://github.com/soloiaros/snowy-mac/releases/latest/download/Snowy-macOS-arm64.dmg"],
     "$0 immediately starts the DMG download without checkout",
   );
-  if (await p.evaluate('document.querySelector("#download-dialog").open'))
-    await p.click("#download-close");
+  assert.ok(await p.evaluate('document.querySelector("#beta-dialog").open && !document.querySelector("#download-dialog").open'),
+    "Starting the download replaces the price sheet with the beta notice");
+  assert.ok(await p.evaluate('document.querySelector("#beta-actions button") === document.activeElement'),
+    "The beta notice focuses its dismiss button");
+  await p.key("Escape", "Escape", 27);
+  assert.ok(!(await p.evaluate('document.querySelector("#beta-dialog").open')));
+  assert.deepEqual(await p.evaluate("SnowyDesktop.visibleWindowIDs"), windowsBefore,
+    "Dismissing the beta notice leaves the desktop windows alone");
+  assert.equal(await p.evaluate("document.activeElement?.id"), "download");
   await p.click("#download");
   await setAmount(p, "#download-amount", "5");
   await p.click("#download-submit");
@@ -574,8 +581,8 @@ async function downloadCheck(p, run, mobile = false) {
     2,
     "The free fallback starts a download even when a positive amount was entered",
   );
-  if (await p.evaluate('document.querySelector("#download-dialog").open'))
-    await p.click("#download-close");
+  assert.ok(await p.evaluate('document.querySelector("#beta-dialog").open'));
+  await p.click("#beta-actions button");
   const checkoutRequests = client.events.filter(
     (event) => event.sessionId === p.sessionId &&
       event.method === "Network.requestWillBeSent" &&
@@ -600,6 +607,19 @@ async function supportCheck(p) {
   await p.frame();
   assert.equal((await p.evaluate("window.__snowyDownloads")).length, 2,
     "A zero support amount does not initiate another download");
+  await p.click('#window-letter [data-close]');
+
+  const requestCount = await p.evaluate("window.__snowyCheckoutRequests.length");
+  await p.evaluate('location.hash = "#drop-some-coins"; true');
+  await p.wait('!document.querySelector("#support-feedback").hidden && !document.querySelector("#support-amount").disabled');
+  const requests = await p.evaluate(`window.__snowyCheckoutRequests.slice(${requestCount})`);
+  assert.equal(requests.length, 1, "The menu link starts exactly one checkout");
+  assert.equal(requests[0].amountCents, 499);
+  assert.equal(requests[0].context, "support");
+  assert.equal(await p.evaluate("location.href"), baseURL, "The checkout marker is consumed");
+  assert.ok(await p.evaluate('SnowyDesktop.visibleWindowIDs.includes("letter")'));
+  assert.equal(await p.evaluate('document.querySelector("#support-amount").value'), "4.99",
+    "If checkout is unavailable, the support form keeps the amount");
   await p.click('#window-letter [data-close]');
 }
 

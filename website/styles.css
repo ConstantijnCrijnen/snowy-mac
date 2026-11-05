@@ -952,6 +952,7 @@ h1 {
   color: #1b3348;
 }
 #download-description { font-size: 13px; line-height: 1.5; margin: 0 0 20px; }
+#beta-description { font-size: 13px; line-height: 1.5; margin: 0; }
 #download-form > label { display: block; font-size: 12px; margin-bottom: 8px; }
 #download-form > label span { color: #607587; }
 .download-amount-field { height: 49px; padding: 7px 13px; font: 27px/1.2 "Helvetica Neue", sans-serif; }

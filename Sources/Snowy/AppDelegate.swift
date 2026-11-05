@@ -57,6 +57,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
         let menu = NSMenu()
         menu.autoenablesItems = false
         menu.delegate = self
+        let support = NSMenuItem(title: "Drop some coins", action: #selector(openSupportCheckout), keyEquivalent: "")
+        support.target = self
+        menu.addItem(support)
+        menu.addItem(.separator())
         let title = NSMenuItem(title: "Snowy", action: nil, keyEquivalent: "")
         title.isEnabled = false
         menu.addItem(title)
@@ -117,6 +121,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
     }
 
     @objc private func installUpdate() { updater.install() }
+
+    @objc private func openSupportCheckout() {
+        guard let url = URL(string: "https://snowy.aauburn.com/#drop-some-coins") else { return }
+        NSWorkspace.shared.open(url)
+    }
 
     private func updateMenu() {
         guard let coordinator else { return }

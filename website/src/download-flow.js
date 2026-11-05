@@ -2,8 +2,9 @@ import { createPaymentIntent, parseAmount } from "./payments.js";
 
 // The only release URL comes from payments.js. An amount never becomes a URL,
 // HTML, or an arbitrary redirect. Paid intents go through the same-origin API.
-export function setupDownloadFlow({ onOpen = () => {} } = {}) {
+export function setupDownloadFlow({ onOpen = () => {}, onSupportOpen = () => {} } = {}) {
   const dialog = document.querySelector("#download-dialog");
+  const beta = document.querySelector("#beta-dialog");
   const trigger = document.querySelector("#download");
   const form = document.querySelector("#download-form");
   const amount = document.querySelector("#download-amount");
@@ -26,8 +27,8 @@ export function setupDownloadFlow({ onOpen = () => {} } = {}) {
         body: JSON.stringify({ amountCents: intent.amountCents, context: intent.context, requestId: attempts.get(signature) }),
         signal: AbortSignal.timeout(20000),
       });
-      const result = await response.json();
-      if (!response.ok) throw Error(result.error || 'Couldn’t open checkout. Please try again.');
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.url) throw Error(result?.error || 'Couldn’t open checkout. Please try again.');
       const url = new URL(result.url);
       if (url.protocol !== 'https:' || url.hostname !== 'polar.sh' || !url.pathname.startsWith('/checkout/') || url.username || url.password || url.port) throw Error('Couldn’t open secure checkout.');
       location.assign(url.href);
@@ -65,6 +66,7 @@ export function setupDownloadFlow({ onOpen = () => {} } = {}) {
     link.click();
     link.remove();
     dialog.close();
+    beta.showModal();
   }
   trigger.addEventListener("click", () => {
     if (dialog.open) return;
@@ -78,6 +80,7 @@ export function setupDownloadFlow({ onOpen = () => {} } = {}) {
   for (const id of ["download-close", "download-cancel"])
     document.getElementById(id).addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => trigger.focus({ preventScroll: true }));
+  beta.addEventListener("close", () => trigger.focus({ preventScroll: true }));
   amount.addEventListener("input", updateAmount);
   for (const preset of presets)
     preset.addEventListener("click", () => {
@@ -118,6 +121,19 @@ export function setupDownloadFlow({ onOpen = () => {} } = {}) {
       else checkout(intent, supportForm, supportFeedback);
     }
   });
+
+  function startMenuCheckout() {
+    if (location.hash !== "#drop-some-coins" || document.prerendering) return;
+    // Consume the app's entry point so Back and reload cannot start another checkout.
+    history.replaceState(history.state, "", location.pathname + location.search);
+    onSupportOpen();
+    supportAmount.value = "4.99";
+    supportForm.requestSubmit();
+  }
+  window.addEventListener("hashchange", startMenuCheckout);
+  document.addEventListener("prerenderingchange", startMenuCheckout, { once: true });
+  startMenuCheckout();
+
   const returned = new URL(location.href);
   const reference = returned.searchParams.get('payment');
   if (reference || returned.searchParams.has('payment_cancelled')) {
