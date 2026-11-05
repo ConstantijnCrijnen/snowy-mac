@@ -48,6 +48,10 @@ Increase the bundle build number with every release. Push a matching `v<version>
 
 Keep a protected backup of the signing key and publish a new version when release assets need to change. A future purchase or license check belongs in a separate entitlement flow. The one-click updater handles compatible updates on the existing channel.
 
+## See download counts
+
+Run `./scripts/download-stats.sh` from the repository with GitHub CLI signed in. The report includes the website's DMG downloads and separates installer and ZIP counts by release. GitHub counts asset downloads, including repeat downloads and ZIPs fetched by the in-app updater.
+
 ## Keep it original
 
 Only submit code and assets you have permission to share under the repository’s license. Window Sweaters is a README-style reference, not a source-code dependency. Please keep seasonal jokes light and optional; no surprise audio.
