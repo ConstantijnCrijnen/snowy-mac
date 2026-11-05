@@ -10,7 +10,7 @@ Sweep a pile with your pointer. Pick up a shovel. Make a little mess.
 
 Download the latest [Apple Silicon DMG](https://github.com/soloiaros/snowy-mac/releases/latest/download/Snowy-macOS-arm64.dmg), open it, and drag **Snowy.app** onto **Applications**. Eject the disk image, then open Snowy from Applications. On a fresh setup, three quick pages show how to sweep snow, adjust wind, and find the menu-bar controls. Skip or close the walkthrough at any time; it won’t reopen on later launches.
 
-Requires **macOS 14 or later**. The current download is for Apple Silicon; Intel Macs can build from source. Builds are locally signed, but not notarized by Apple. If macOS asks for approval, use **System Settings → Privacy & Security → Open Anyway** after trying to open the app.
+Requires **macOS 14 or later**. The current download is for Apple Silicon. Intel Macs can build from source. The 0.9.3 beta is signed locally and can trigger Gatekeeper’s malware-verification warning. If macOS blocks the copy you downloaded here, go to **System Settings → Privacy & Security → Open Anyway** after trying to open it.
 
 When a compatible release is available, **Update** appears in blue near the bottom of the snowflake menu. Click it to download, install, and reopen Snowy. To upgrade from 0.9.1 or earlier, quit Snowy and replace it in Applications using the DMG once.
 
