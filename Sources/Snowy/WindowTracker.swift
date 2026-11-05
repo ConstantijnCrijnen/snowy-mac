@@ -23,6 +23,7 @@ struct DisplaySnapshot: Sendable {
     let fullscreen: Bool
     let spotlightSupports: [SpotlightSnowSupport]
     let dockWindowID: UInt64?
+    let desktop: SceneDesktop
 }
 
 private final class ProcessObserver {
@@ -53,6 +54,21 @@ final class WindowTracker {
     private var lastDockPreferenceLookup: TimeInterval = -.infinity
     private var preferredDockIDs: [UInt32: UInt64] = [:]
     private var processObservers: [ProcessObserver] = []
+    private var finderPID: pid_t?
+    private var icons: [SceneAnchorTarget] = []
+    private var iconQueryInFlight = false
+    private var iconGeneration = 0
+    private var lastIconQuery: TimeInterval = -.infinity
+    var includesDesktopIcons = false {
+        didSet {
+            guard oldValue != includesDesktopIcons else { return }
+            iconGeneration += 1
+            icons.removeAll(keepingCapacity: true)
+            lastIconQuery = -.infinity
+            lastQuery = -.infinity
+            lastFullQuery = -.infinity
+        }
+    }
 
     init() {
         // Spotlight can start after our periodic process-role cache was populated. Refresh
@@ -77,11 +93,14 @@ final class WindowTracker {
         preferredDockIDs.removeAll(keepingCapacity: true)
         lastDockPreferenceLookup = -.infinity
         lastProcessLookup = -.infinity
+        iconGeneration += 1
+        icons.removeAll(keepingCapacity: true)
+        lastIconQuery = -.infinity
     }
 
     func refreshIfNeeded(displays: [DisplayGeometry], now: TimeInterval, dragging: Bool,
                          idleInterval: TimeInterval = 0.5,
-                         completion: @escaping @MainActor ([DisplaySnapshot]) -> Void) {
+                         completion: @escaping @MainActor ([DisplaySnapshot]?) -> Void) {
         guard !inFlight else { return }
         if wasDragging && !dragging {
             lastFullQuery = -.infinity
@@ -102,10 +121,12 @@ final class WindowTracker {
         inFlight = true
         if now - lastProcessLookup > 5 {
             roles.removeAll(keepingCapacity: true)
+            finderPID = nil
             for app in NSWorkspace.shared.runningApplications {
                 guard let bundle = app.bundleIdentifier,
                       let role = DesktopWindowDecoder.processRole(bundleIdentifier: bundle) else { continue }
                 roles[app.processIdentifier] = role
+                if bundle == "com.apple.finder" { finderPID = app.processIdentifier }
             }
             lastProcessLookup = now
         }
@@ -135,7 +156,10 @@ final class WindowTracker {
             }.value
             guard let self else { return }
             self.inFlight = false
-            guard self.generation == requestGeneration else { return }
+            guard self.generation == requestGeneration else {
+                completion(nil)
+                return
+            }
             if let target {
                 if let replacement = records.first(where: { $0.id == UInt64(target) }),
                    let index = self.cachedRecords.firstIndex(where: { $0.id == UInt64(target) }) {
@@ -152,12 +176,42 @@ final class WindowTracker {
                 self.cachedRecords = records
                 self.trackedWindow = dragging ? (self.windowUnderDragPointer() ?? changed.map { UInt32($0.id) }) : nil
             }
-            let snapshots = Self.snapshots(displays: displays, records: self.cachedRecords,
-                                           dockLayout: self.dockLayout, preferredDockIDs: self.preferredDockIDs)
-            for snapshot in snapshots {
-                self.preferredDockIDs[snapshot.id] = snapshot.dockWindowID
+            self.deliverSnapshots(displays: displays, completion: completion)
+            self.refreshIcons(displays: displays, now: now, dragging: dragging, completion: completion)
+        }
+    }
+
+    private func deliverSnapshots(displays: [DisplayGeometry], completion: ([DisplaySnapshot]?) -> Void) {
+        let snapshots = Self.snapshots(displays: displays, records: cachedRecords, icons: icons,
+                                       dockLayout: dockLayout, preferredDockIDs: preferredDockIDs)
+        for snapshot in snapshots {
+            preferredDockIDs[snapshot.id] = snapshot.dockWindowID
+        }
+        completion(snapshots)
+    }
+
+    private func refreshIcons(displays: [DisplayGeometry], now: TimeInterval, dragging: Bool,
+                              completion: @escaping @MainActor ([DisplaySnapshot]?) -> Void) {
+        guard includesDesktopIcons, !iconQueryInFlight,
+              now - lastIconQuery >= (dragging ? 0.20 : 1.0) else { return }
+        lastIconQuery = now
+        let requestGeneration = iconGeneration
+        let pid = finderPID
+        iconQueryInFlight = true
+        // Finder IPC runs separately so slow icon metadata never delays snow geometry.
+        Task { [weak self] in
+            let result = await Task.detached(priority: .utility) {
+                if let pid { return DesktopIconGeometry.read(finderPID: pid) }
+                return []
+            }.value
+            guard let self else { return }
+            self.iconQueryInFlight = false
+            guard self.iconGeneration == requestGeneration, self.includesDesktopIcons,
+                  let result, result != self.icons else { return }
+            self.icons = result
+            if !self.inFlight {
+                self.deliverSnapshots(displays: displays, completion: completion)
             }
-            completion(snapshots)
         }
     }
 
@@ -198,17 +252,19 @@ final class WindowTracker {
     }
 
     nonisolated private static func snapshots(displays: [DisplayGeometry],
-                                              records: [DesktopWindowRecord], dockLayout: DockLayoutHint?,
+                                              records: [DesktopWindowRecord], icons: [SceneAnchorTarget],
+                                              dockLayout: DockLayoutHint?,
                                               preferredDockIDs: [UInt32: UInt64]) -> [DisplaySnapshot] {
         let spotlightLevels = Dictionary(records.filter { $0.role == .spotlight }.map { ($0.id, $0.layer) },
                                           uniquingKeysWith: { first, _ in first })
+        let widgetIDs = Set(records.lazy.filter { $0.role == .widget }.map(\.id))
         return displays.map { display in
             let scene = DesktopSceneBuilder.build(displayBounds: display.bounds, menuInset: display.menuInset,
                                                   windows: records, dockLayout: dockLayout,
                                                   preferredDockID: preferredDockIDs[display.id],
                                                   dockBottomInset: display.dockBottomInset)
             let spotlight = scene.surfaces.compactMap { surface -> SpotlightSnowSupport? in
-                guard surface.releasesSnowWhenRemoved, let level = spotlightLevels[surface.id],
+                guard surface.isElevated, let level = spotlightLevels[surface.id],
                       surface.id <= UInt64(UInt32.max) else { return nil }
                 // Window caps have an 18-point physical limit plus an antialiased upper rim.
                 let rect = CGRect(x: CGFloat(surface.x) - 1, y: CGFloat(surface.y) - 20,
@@ -216,9 +272,24 @@ final class WindowTracker {
                                   height: CGFloat(surface.cornerRadius) + 22)
                 return SpotlightSnowSupport(windowID: UInt32(surface.id), level: level, capBounds: rect)
             }
+            var anchors = scene.bodies.compactMap { body -> SceneAnchorTarget? in
+                guard widgetIDs.contains(body.id), body.bounds.width >= 4, body.bounds.height >= 4 else { return nil }
+                return SceneAnchorTarget(id: "widget:\(body.id)", kind: .widget, bounds: body.bounds)
+            }
+            for icon in icons {
+                // Prefer the display containing an icon's center to avoid duplicate snap targets.
+                guard display.bounds.contains(CGPoint(x: icon.bounds.midX, y: icon.bounds.midY)) else { continue }
+                let bounds = icon.bounds.intersection(display.bounds)
+                    .offsetBy(dx: -display.bounds.minX, dy: -display.bounds.minY)
+                guard bounds.width >= 4, bounds.height >= 4 else { continue }
+                anchors.append(SceneAnchorTarget(id: icon.id, kind: .icon, bounds: bounds))
+            }
+            let desktop = SceneDesktop(id: display.id, size: display.bounds.size,
+                                       dock: scene.bodies.first { $0.id == DesktopSceneBuilder.dockID }?.bounds,
+                                       anchors: anchors)
             return DisplaySnapshot(id: display.id, surfaces: scene.surfaces, bodies: scene.bodies,
                                    fullscreen: DesktopSceneBuilder.isFullscreen(displayBounds: display.bounds, windows: records),
-                                   spotlightSupports: spotlight, dockWindowID: scene.dockWindowID)
+                                   spotlightSupports: spotlight, dockWindowID: scene.dockWindowID, desktop: desktop)
         }
     }
 }

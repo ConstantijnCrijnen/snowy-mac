@@ -32,7 +32,7 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) { onClose?() }
 }
 
-private enum WelcomeStep: Int, CaseIterable {
+enum WelcomeStep: Int, CaseIterable {
     case desktop, wind, menu
 
     var title: String {
@@ -48,6 +48,22 @@ private enum WelcomeStep: Int, CaseIterable {
         case .desktop: "Snow settles on windows, widgets, and the bottom Dock. When you move a window, its snow moves with it."
         case .wind: "Sweep across a pile with your pointer. For a wider sweep, choose Shovel from Cursor Tool."
         case .menu: "Click the snowflake in the menu bar to change snowfall, pause it, or clear settled snow."
+        }
+    }
+
+    var secondaryDetail: String? {
+        switch self {
+        case .desktop: nil
+        case .wind: "Choose Wind… and drag the arrow to set its direction and strength."
+        case .menu: "Choose Open Snowy… for wallpapers, decorations, and the Guide."
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .desktop: "snowflake"
+        case .wind: "wind"
+        case .menu: "menubar.rectangle"
         }
     }
 }
@@ -75,8 +91,8 @@ struct WelcomeView: View {
                         .accessibilityAddTraits(.isHeader)
                     Text(step.detail)
                         .foregroundStyle(.secondary)
-                    if step == .wind {
-                        Text("Choose Wind… and drag the arrow to set its direction and strength.")
+                    if let secondaryDetail = step.secondaryDetail {
+                        Text(secondaryDetail)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -273,6 +289,7 @@ private struct WelcomePreview: View {
             VStack(alignment: .leading, spacing: 7) {
                 Text("Snowy").fontWeight(.semibold)
                 Divider()
+                Text("Open Snowy…")
                 Text("Pause Snow")
                 Text("Clear Settled Snow")
                 HStack {

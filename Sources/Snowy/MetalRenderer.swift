@@ -55,7 +55,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     let simulation: SnowSimulation
     let view: MTKView
     let spotlightOverlay: SpotlightOverlay
-    var beforeFrame: (() -> Void)?
+    var beforeFrame: ((TimeInterval, SIMD2<Float>?) -> Void)?
     var cursorPosition: (() -> SIMD2<Float>)?
     var onFailure: (() -> Void)?
     private let context: MetalContext
@@ -133,11 +133,12 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         guard inFlight.wait(timeout: .now()) == .success else { return }
         var submitted = false
         defer { if !submitted { inFlight.signal() } }
-        beforeFrame?()
         let now = CACurrentMediaTime()
+        let cursor = cursorPosition?()
+        beforeFrame?(now, cursor)
         let dt = Float(lastFrame.map { now - $0 } ?? (1 / Double(view.preferredFramesPerSecond)))
         lastFrame = now
-        simulation.step(dt: dt, cursor: cursorPosition?())
+        simulation.step(dt: dt, cursor: cursor)
 
         guard let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
               let command = context.queue.makeCommandBuffer(),

@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
     private var windPopover: NSPopover?
     private var toolItems: [NSMenuItem] = []
     private var welcomeWindow: WelcomeWindowController?
+    private var snowyWindow: SnowyWindowController?
+    private let decorationSettings = DecorationSettings()
     private let updater = SnowyUpdater()
     private let updateItem = NSMenuItem(title: "Update", action: #selector(installUpdate), keyEquivalent: "")
 
@@ -26,6 +28,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
             let coordinator = try DesktopCoordinator()
             self.coordinator = coordinator
             coordinator.onStateChange = { [weak self] in self?.updateMenu() }
+            decorationSettings.onChange = { [weak coordinator] configuration in
+                coordinator?.setDecorations(configuration)
+            }
+            decorationSettings.desktops = coordinator.editorDesktops
+            decorationSettings.onEditorVisibility = { [weak coordinator] visible in
+                coordinator?.setEditorVisible(visible)
+            }
+            coordinator.onDesktopGeometryChange = { [weak self] desktops in
+                self?.decorationSettings.desktops = desktops
+            }
+            decorationSettings.apply()
         } catch {
             stateItem.title = "Metal is unavailable on this Mac"
             pauseItem.isEnabled = false
@@ -33,17 +46,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
         updateMenu()
         if coordinator != nil {
             FirstLaunchPolicy.markConsidered(in: defaults)
-            if shouldShowWelcome {
-                let welcome = WelcomeWindowController()
-                welcome.onClose = { [weak self] in self?.welcomeWindow = nil }
-                welcomeWindow = welcome
-                welcome.present()
-            }
+            if shouldShowWelcome { presentWelcome() }
         }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if let welcomeWindow { welcomeWindow.present() }
+        else { presentSnowyWindow() }
+        return false
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         welcomeWindow?.close()
+        snowyWindow?.close()
         windPopover?.performClose(nil)
         coordinator?.stop()
     }
@@ -66,6 +81,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
         menu.addItem(title)
         stateItem.isEnabled = false
         menu.addItem(stateItem)
+        menu.addItem(.separator())
+        let open = NSMenuItem(title: "Open Snowy…", action: #selector(openSnowyWindow), keyEquivalent: "")
+        open.target = self
+        menu.addItem(open)
         menu.addItem(.separator())
         pauseItem.target = self
         menu.addItem(pauseItem)
@@ -121,6 +140,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSM
     }
 
     @objc private func installUpdate() { updater.install() }
+
+    @objc private func openSnowyWindow() {
+        DispatchQueue.main.async { [weak self] in self?.presentSnowyWindow() }
+    }
+
+    private func presentSnowyWindow() {
+        if snowyWindow == nil {
+            snowyWindow = SnowyWindowController(
+                settings: decorationSettings,
+                resetDecorations: { [weak self] in self?.coordinator?.resetDecorations() },
+                replayWalkthrough: { [weak self] in self?.presentWelcome() }
+            )
+        }
+        snowyWindow?.present()
+    }
+
+    private func presentWelcome() {
+        if welcomeWindow == nil {
+            let welcome = WelcomeWindowController()
+            welcome.onClose = { [weak self] in self?.welcomeWindow = nil }
+            welcomeWindow = welcome
+        }
+        welcomeWindow?.present()
+    }
 
     @objc private func openSupportCheckout() {
         guard let url = URL(string: "https://snowy.aauburn.com/#drop-some-coins") else { return }

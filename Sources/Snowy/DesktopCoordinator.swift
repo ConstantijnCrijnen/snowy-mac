@@ -10,6 +10,7 @@ private final class SnowPanel: NSPanel {
 @MainActor
 final class DesktopCoordinator {
     var onStateChange: (() -> Void)?
+    var onDesktopGeometryChange: (([SceneDesktop]) -> Void)?
     private(set) var failed = false
     private(set) var policy: RenderPolicy
     var paused: Bool {
@@ -54,20 +55,34 @@ final class DesktopCoordinator {
     private var draggingWindow = false
     private var lastDockGeometryRead: CFTimeInterval = -.infinity
     private var dockBottomInsets: [UInt32: Float] = [:]
+    private var decorationConfiguration = DecorationConfiguration()
+    private var editorVisible = false
 
+    var editorDesktops: [SceneDesktop] { displays.map(\.desktop) }
+
+    @MainActor
     private final class Display {
         let geometry: DisplayGeometry
         let panel: SnowPanel
         let renderer: MetalRenderer
         let nativeScale: CGFloat
+        let decorations: DesktopDecorations
+        let lights: DesktopHangingLights
+        var snapshot: DisplaySnapshot?
         var fullscreen = false
         var geometryReady = false
+        var desktop: SceneDesktop {
+            snapshot?.desktop ?? SceneDesktop(id: geometry.id, size: geometry.bounds.size, dock: nil, anchors: [])
+        }
 
-        init(geometry: DisplayGeometry, panel: SnowPanel, renderer: MetalRenderer, nativeScale: CGFloat) {
+        init(geometry: DisplayGeometry, panel: SnowPanel, renderer: MetalRenderer, nativeScale: CGFloat,
+             decorations: DesktopDecorations, lights: DesktopHangingLights) {
             self.geometry = geometry
             self.panel = panel
             self.renderer = renderer
             self.nativeScale = nativeScale
+            self.decorations = decorations
+            self.lights = lights
         }
     }
 
@@ -85,6 +100,32 @@ final class DesktopCoordinator {
 
     func clear() {
         for display in displays { display.renderer.simulation.clear() }
+    }
+
+    func setDecorations(_ configuration: DecorationConfiguration) {
+        decorationConfiguration = configuration
+        for display in displays {
+            configureDecorations(for: display)
+            applyScene(for: display)
+        }
+        updateIconTracking()
+        updateState()
+    }
+
+    func setEditorVisible(_ visible: Bool) {
+        editorVisible = visible
+        updateIconTracking()
+        updateState()
+    }
+
+    func resetDecorations() {
+        for display in displays {
+            display.decorations.reset()
+            display.lights.configure([])
+            display.lights.configure(decorationConfiguration.scene(for: display.desktop).lights)
+            applyScene(for: display)
+        }
+        updateState()
     }
 
     func stop() {
@@ -129,6 +170,8 @@ final class DesktopCoordinator {
             self.tracker.invalidate()
             // Don't carry snow from another Space onto a reused window ID.
             for display in self.displays {
+                display.snapshot = nil
+                display.geometryReady = false
                 display.renderer.spotlightOverlay.update(supports: [], displayBounds: display.geometry.bounds,
                                                         primaryTop: self.primaryTop)
                 display.renderer.simulation.updateSurfaces([])
@@ -136,6 +179,7 @@ final class DesktopCoordinator {
                 display.renderer.simulation.clear()
                 display.renderer.simulation.resetPointer()
             }
+            self.updateState()
             self.refreshMetadata()
         }
         observe(workspace, NSWorkspace.screensDidSleepNotification) { [weak self] in
@@ -217,34 +261,97 @@ final class DesktopCoordinator {
                 panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) + 1)
                 panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
                 panel.isExcludedFromWindowsMenu = true
-                panel.contentView = renderer.view
+                let decorations = DesktopDecorations(size: frame.size)
+                let lights = DesktopHangingLights(size: frame.size)
+                let content = NSView(frame: CGRect(origin: .zero, size: frame.size))
+                renderer.view.autoresizingMask = [.width, .height]
+                content.addSubview(renderer.view)
+                // Like desktop windows, opaque sprite pixels cover snow behind
+                // them while leaving their transparent outline and tops visible.
+                content.addSubview(decorations.view)
+                content.addSubview(lights.view)
+                panel.contentView = content
                 panel.setFrame(frame, display: false)
+                let display = Display(geometry: geometry, panel: panel, renderer: renderer,
+                                      nativeScale: screen.backingScaleFactor, decorations: decorations, lights: lights)
+                configureDecorations(for: display)
                 renderer.cursorPosition = { [weak self] in
                     let point = NSEvent.mouseLocation
                     return SIMD2(Float(point.x - geometry.bounds.minX),
                                  Float((self?.primaryTop ?? 0) - point.y - geometry.bounds.minY))
                 }
-                renderer.beforeFrame = { [weak self] in
+                renderer.beforeFrame = { [weak self, weak display] now, cursor in
                     guard let self else { return }
                     let down = NSEvent.pressedMouseButtons != 0
                     if down || self.draggingWindow { self.refreshMetadata(dragging: down) }
                     self.draggingWindow = down
+                    guard let display, let snapshot = display.snapshot else { return }
+                    let pointer = down ? nil : cursor
+                    let isCoveredByOwnWindow: (SIMD2<Float>) -> Bool = { point in
+                        let global = CGPoint(x: geometry.bounds.minX + CGFloat(point.x),
+                                             y: self.primaryTop - geometry.bounds.minY - CGFloat(point.y))
+                        return NSApp.windows.contains {
+                            $0.isVisible && $0.level.rawValue >= NSWindow.Level.normal.rawValue
+                                && $0.frame.contains(global)
+                        }
+                    }
+                    display.lights.advance(now: now, wind: self.wind, cursor: pointer,
+                                           reducedMotion: self.policy.reducedMotion) { point in
+                        snapshot.bodies.contains { $0.contains(point) } || isCoveredByOwnWindow(point)
+                    }
+                    if display.decorations.advance(cursor: pointer, now: now,
+                                                   reducedMotion: self.policy.reducedMotion, occluders: snapshot.bodies,
+                                                   isCoveredByOwnWindow: isCoveredByOwnWindow) {
+                        self.applyScene(for: display)
+                    }
                 }
                 renderer.onFailure = { [weak self] in
                     self?.failed = true
                     self?.updateState()
                 }
-                displays.append(Display(geometry: geometry, panel: panel, renderer: renderer,
-                                        nativeScale: screen.backingScaleFactor))
+                displays.append(display)
             }
         } catch {
             failed = true
         }
         reconfiguring = false
+        updateIconTracking()
+        onDesktopGeometryChange?(editorDesktops)
         updateState()
     }
 
-    private var running: Bool { !paused && screensAwake && sessionActive && !failed && !policy.suspended }
+    private var desktopAvailable: Bool { screensAwake && sessionActive && !failed && !policy.suspended }
+    private var running: Bool { !paused && desktopAvailable }
+    private var followsObjects: Bool {
+        displays.contains { $0.lights.followsWidgets || (tracker.includesDesktopIcons && $0.lights.followsIcons) }
+    }
+    private var needsDesktopScene: Bool {
+        desktopAvailable && (!paused || editorVisible || decorationConfiguration.hasContent)
+    }
+
+    private func updateIconTracking() {
+        let needed = decorationConfiguration.includesDesktopIcons
+            && (editorVisible || displays.contains { $0.lights.followsIcons })
+        guard needed != tracker.includesDesktopIcons else { return }
+        tracker.includesDesktopIcons = needed
+        refreshMetadata()
+    }
+
+    private func configureDecorations(for display: Display) {
+        let desktop = display.desktop
+        let scene = decorationConfiguration.scene(for: desktop)
+        display.decorations.updateDock(desktop.dock)
+        display.decorations.configure(props: scene.props)
+        display.lights.updateDesktop(desktop, animate: running && !policy.reducedMotion && !display.fullscreen)
+        display.lights.configure(scene.lights)
+    }
+
+    private func applyScene(for display: Display) {
+        guard let snapshot = display.snapshot else { return }
+        let simulation = display.renderer.simulation
+        let scene = display.decorations.scene(with: snapshot, budget: simulation.budget)
+        simulation.updateScene(surfaces: scene.surfaces, bodies: scene.bodies)
+    }
 
     private func updateState() {
         guard !reconfiguring, !stopping, !updatingState else { return }
@@ -257,17 +364,20 @@ final class DesktopCoordinator {
         let pixelBudgetScale = sqrt(6_000_000 / totalArea)
         for display in displays {
             // Seed airborne flakes only after the first body snapshot, never inside unknown windows.
-            let show = running && display.geometryReady && !display.fullscreen
-            if show {
+            let visibleDesktop = desktopAvailable && display.geometryReady && !display.fullscreen
+            let showSnow = running && visibleDesktop
+            let showDecorations = visibleDesktop && (!display.decorations.isEmpty || !display.lights.isEmpty)
+            if showSnow || showDecorations {
                 if !display.panel.isVisible { display.panel.orderFrontRegardless() }
             } else if display.panel.isVisible { display.panel.orderOut(nil) }
+            display.renderer.view.isHidden = !showSnow
             let scale = min(display.nativeScale, min(CGFloat(policy.renderScale), pixelBudgetScale))
             // Full-display transparent Finder/widget containers can mark a desktop panel occluded.
             // Use explicit scene/lifecycle gates; that bounding-box signal is not reliable here.
-            display.renderer.apply(policy: policy, scale: scale, paused: !show)
-            display.renderer.spotlightOverlay.apply(show: show, scale: scale)
+            display.renderer.apply(policy: policy, scale: scale, paused: !showSnow)
+            display.renderer.spotlightOverlay.apply(show: showSnow, scale: scale)
         }
-        if running && !displays.isEmpty {
+        if desktopAvailable && (running || editorVisible || followsObjects) && !displays.isEmpty {
             if metadataTimer == nil {
                 let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
                     MainActor.assumeIsolated { self?.refreshMetadata() }
@@ -280,13 +390,19 @@ final class DesktopCoordinator {
         } else {
             metadataTimer?.invalidate()
             metadataTimer = nil
-            tracker.invalidate()
+            if needsDesktopScene {
+                // A paused desktop needs only a one-shot snapshot after a Space
+                // or display change. Its static art requires no render clock.
+                if displays.contains(where: { !$0.geometryReady }) { refreshMetadata() }
+            } else {
+                tracker.invalidate()
+            }
         }
         onStateChange?()
     }
 
     private func refreshMetadata(dragging: Bool? = nil) {
-        guard running else { return }
+        guard needsDesktopScene, !displays.isEmpty else { return }
         let idleInterval: TimeInterval = displays.allSatisfy(\.fullscreen) ? 1 : 0.5
         let now = CACurrentMediaTime()
         if now - lastDockGeometryRead >= idleInterval {
@@ -307,15 +423,30 @@ final class DesktopCoordinator {
         }
         tracker.refreshIfNeeded(displays: geometry, now: now,
                                 dragging: dragging ?? (NSEvent.pressedMouseButtons != 0), idleInterval: idleInterval) { [weak self] snapshots in
-            guard let self, self.running else { return }
+            guard let self, self.needsDesktopScene else { return }
+            guard let snapshots else {
+                self.refreshMetadata()
+                return
+            }
+            let previousDesktops = self.editorDesktops
             for snapshot in snapshots {
                 guard let display = self.displays.first(where: { $0.geometry.id == snapshot.id }) else { continue }
-                display.renderer.simulation.updateScene(surfaces: snapshot.surfaces, bodies: snapshot.bodies)
+                let previousSnapshot = display.snapshot
+                let previousDesktop = display.desktop
+                display.snapshot = snapshot
+                let desktopChanged = display.desktop != previousDesktop
+                if desktopChanged { self.configureDecorations(for: display) }
+                if desktopChanged || previousSnapshot?.surfaces != snapshot.surfaces
+                    || previousSnapshot?.bodies != snapshot.bodies {
+                    self.applyScene(for: display)
+                }
                 display.renderer.spotlightOverlay.update(supports: snapshot.spotlightSupports,
                                                         displayBounds: display.geometry.bounds, primaryTop: self.primaryTop)
                 display.fullscreen = snapshot.fullscreen
                 display.geometryReady = true
             }
+            let newDesktops = self.editorDesktops
+            if newDesktops != previousDesktops { self.onDesktopGeometryChange?(newDesktops) }
             self.updateState()
         }
     }
