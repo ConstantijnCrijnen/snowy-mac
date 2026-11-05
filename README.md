@@ -12,7 +12,7 @@ Download the latest [Apple Silicon DMG](https://github.com/soloiaros/snowy-mac/r
 
 Requires **macOS 14 or later**. The current download is for Apple Silicon; Intel Macs can build from source. Builds are locally signed, but not notarized by Apple. If macOS asks for approval, use **System Settings → Privacy & Security → Open Anyway** after trying to open the app.
 
-When updating, quit Snowy from its snowflake menu before replacing or reopening the app.
+When a compatible release is available, **Update** appears in blue near the bottom of the snowflake menu. Click it to download, install, and reopen Snowy. To upgrade from 0.9.1 or earlier, quit Snowy and replace it in Applications using the DMG once.
 
 ## Let it snow
 
@@ -25,7 +25,7 @@ Click the snowflake in your menu bar to make yourself comfortable:
 
 Snow collects on window tops, widgets, Spotlight, and a bottom-positioned Dock. Moving windows push it around; closing Spotlight lets its uncovered snow fall. Side-positioned Docks are intentionally left out.
 
-The desktop stays clickable. Snowy uses public window geometry, not screen capture or Accessibility access. It makes no network requests and saves only your settings.
+The desktop stays clickable. Snowy reads public window geometry without screen capture or Accessibility access. It stores your settings locally and checks GitHub for signed updates.
 
 ## Build it yourself
 

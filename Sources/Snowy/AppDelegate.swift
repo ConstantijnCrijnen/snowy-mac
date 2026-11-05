@@ -2,7 +2,7 @@ import AppKit
 import SnowCore
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSMenuDelegate {
     private var coordinator: DesktopCoordinator?
     private var statusItem: NSStatusItem?
     private let pauseItem = NSMenuItem(title: "Pause Snow", action: #selector(togglePause), keyEquivalent: "p")
@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var windPopover: NSPopover?
     private var toolItems: [NSMenuItem] = []
     private var welcomeWindow: WelcomeWindowController?
+    private let updater = SnowyUpdater()
+    private let updateItem = NSMenuItem(title: "Update", action: #selector(installUpdate), keyEquivalent: "")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Read the persisted domain before coordinator startup can write settings.
@@ -18,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let domainName = Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName
         let shouldShowWelcome = FirstLaunchPolicy.shouldPresent(in: defaults, domainName: domainName)
         buildMenu()
+        updater.onChange = { [weak self] in self?.updateAvailableRelease() }
+        updater.start()
         do {
             let coordinator = try DesktopCoordinator()
             self.coordinator = coordinator
@@ -52,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         statusItem = item
         let menu = NSMenu()
         menu.autoenablesItems = false
+        menu.delegate = self
         let title = NSMenuItem(title: "Snowy", action: nil, keyEquivalent: "")
         title.isEnabled = false
         menu.addItem(title)
@@ -87,10 +92,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         wind.target = self
         menu.addItem(wind)
         menu.addItem(.separator())
+        updateItem.target = self
+        updateItem.isHidden = true
+        updateItem.isEnabled = false
+        menu.addItem(updateItem)
         let quit = NSMenuItem(title: "Quit Snowy", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quit)
         item.menu = menu
     }
+
+    func menuWillOpen(_ menu: NSMenu) { updateAvailableRelease() }
+
+    private func updateAvailableRelease() {
+        guard let version = updater.availableVersion else {
+            updateItem.isHidden = true
+            return
+        }
+        updateItem.attributedTitle = NSAttributedString(
+            string: "Update to \(version)…",
+            attributes: [.foregroundColor: NSColor.linkColor]
+        )
+        updateItem.isHidden = false
+        updateItem.isEnabled = updater.canInstall
+    }
+
+    @objc private func installUpdate() { updater.install() }
 
     private func updateMenu() {
         guard let coordinator else { return }

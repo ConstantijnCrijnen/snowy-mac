@@ -20,13 +20,31 @@ if [[ -e "$app_dir" || -L "$app_dir" ]]; then
 fi
 swift build -c release --product Snowy
 binary_dir="$(swift build -c release --show-bin-path)"
+sparkle_artifact="$project_root/.build/artifacts/sparkle/Sparkle"
+sparkle_framework="$sparkle_artifact/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+if [[ ! -L "$sparkle_framework/Versions/Current" || ! -x "$sparkle_framework/Sparkle" || ! -f "$sparkle_artifact/LICENSE" ]]; then
+  print -u2 "The pinned Sparkle framework is missing or incomplete. Resolve the Swift package dependencies and try again."
+  exit 1
+fi
 mkdir -p "$project_root/build" "$project_root/.build/shaders"
 staging_dir="$(mktemp -d "$project_root/build/.Snowy-build.XXXXXX")"
 trap 'rm -rf "$staging_dir"' EXIT
 staged_app="$staging_dir/Snowy.app"
-mkdir -p "$staged_app/Contents/MacOS" "$staged_app/Contents/Resources"
-cp "$binary_dir/Snowy" "$staged_app/Contents/MacOS/Snowy"
+mkdir -p "$staged_app/Contents/MacOS" "$staged_app/Contents/Resources" "$staged_app/Contents/Frameworks"
+staged_binary="$staged_app/Contents/MacOS/Snowy"
+cp "$binary_dir/Snowy" "$staged_binary"
 cp "$project_root/App/Info.plist" "$staged_app/Contents/Info.plist"
+# Keep Sparkle's versioned symlinks and its signed updater helpers intact.
+ditto "$sparkle_framework" "$staged_app/Contents/Frameworks/Sparkle.framework"
+cp "$sparkle_artifact/LICENSE" "$staged_app/Contents/Resources/Sparkle-LICENSE.txt"
+# SwiftPM can add developer-toolchain paths for its own build products.
+runtime_paths="$(otool -l "$staged_binary" | awk '/cmd LC_RPATH$/ { getline; getline; sub(/^[[:space:]]*path /, ""); sub(/ \(offset [0-9]+\)$/, ""); print }')"
+while IFS= read -r runtime_path; do
+  case "$runtime_path" in
+    ''|/usr/lib/swift|@executable_path/../Frameworks) ;;
+    *) install_name_tool -delete_rpath "$runtime_path" "$staged_binary" ;;
+  esac
+done <<< "$runtime_paths"
 xcrun -sdk macosx metal -mmacosx-version-min=14.0 -c \
   "$project_root/Sources/Snowy/Shaders/Snow.metal" -o "$project_root/.build/shaders/Snow.air"
 xcrun -sdk macosx metallib "$project_root/.build/shaders/Snow.air" \

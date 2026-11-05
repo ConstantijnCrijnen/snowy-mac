@@ -44,7 +44,9 @@ Update the version and build number in `App/Info.plist`, run the checks, then pa
 
 This writes an architecture-labelled DMG, ZIP, and their SHA-256 checksums into `build/releases/`. The DMG contains Snowy.app and an Applications shortcut over a Retina winter background. Packaging uses Python 3 with venv and pip to install two hash-pinned Finder metadata helpers in a temporary environment. It draws the artwork offscreen, writes Finder metadata directly to an owned staging image, and verifies the signed app, ZIP, disk-image checksum, background alias, and icon positions. It never opens Finder or launches Snowy.
 
-Push a matching `v<version>` tag, then manually run the **Release** workflow with that tag. The workflow checks that the tag matches `Info.plist`, runs tests, builds the app, and attaches the DMG, ZIP, and checksums to the GitHub release. It uses a local ad-hoc signature; Developer ID signing and notarization are not configured.
+Increase the bundle build number with every release. Push a matching `v<version>` tag, then manually run the **Release** workflow with that tag. It tests and packages Snowy, signs the ZIP and `appcast.xml` using the `SNOWY_SPARKLE_PRIVATE_KEY` Actions secret, and publishes them with the DMG and checksums. The app bundle uses an ad-hoc signature. Sparkle verifies updates against the public key embedded in the bundle.
+
+Keep a protected backup of the signing key and publish a new version when release assets need to change. A future purchase or license check belongs in a separate entitlement flow. The one-click updater handles compatible updates on the existing channel.
 
 ## Keep it original
 

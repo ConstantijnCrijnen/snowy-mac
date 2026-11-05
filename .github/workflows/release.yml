@@ -49,14 +49,21 @@ jobs:
         run: swift test
       - name: Build and package
         run: ./scripts/package-release.sh
-      - name: Attach release files
+      - name: Sign Sparkle update
+        env:
+          SNOWY_SPARKLE_PRIVATE_KEY: ${{ secrets.SNOWY_SPARKLE_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          test -n "$SNOWY_SPARKLE_PRIVATE_KEY"
+          printf '%s\n' "$SNOWY_SPARKLE_PRIVATE_KEY" | ./scripts/create-appcast.sh "$RELEASE_TAG"
+      - name: Publish signed release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" build/releases/*.dmg build/releases/*.zip build/releases/*.sha256 --clobber
-          else
-            gh release create "$RELEASE_TAG" build/releases/*.dmg build/releases/*.zip build/releases/*.sha256 \
-              --verify-tag --title "Snowy $RELEASE_TAG" --notes-file .github/release-notes.md
+            echo 'This release already exists. Publish a new tag for different signed assets.' >&2
+            exit 1
           fi
+          gh release create "$RELEASE_TAG" build/releases/*.dmg build/releases/*.zip build/releases/*.sha256 build/releases/appcast.xml \
+            --verify-tag --latest --title "Snowy $RELEASE_TAG" --notes-file .github/release-notes.md

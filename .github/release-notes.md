@@ -1,8 +1,8 @@
 Snowy brings interactive snow to window edges, desktop widgets, Spotlight, and a bottom-positioned Dock.
 
-The redesigned installer includes a winter background and a clear drag-to-Applications layout. A short welcome window on first launch shows how to sweep snow, adjust the wind, and use the snowflake menu. Closing or skipping it marks it seen, and users with saved Snowy settings skip it.
+The first-launch walkthrough now uses a standard macOS window with a framed preview on the left and short instructions on the right. It covers settled snow, sweeping and wind, and the snowflake menu.
 
-Download the DMG matching your Mac, open it, and drag **Snowy.app** onto **Applications**. Eject the disk image, then open Snowy from Applications. Open its snowflake menu for snowfall, wind, Glove/Shovel, pause, and clear controls. Quit an older copy before updating. A ZIP is also available.
+Open the DMG and drag **Snowy.app** onto **Applications**. If you have 0.9.1 or earlier, quit it and replace it with this copy once. Going forward, a blue **Update** item in the snowflake menu appears for newer compatible releases. Click it to download, install, and reopen Snowy.
 
 Requires macOS 14 or later. The archive name identifies its architecture: `arm64` is Apple Silicon, `x86_64` is Intel, and `universal` includes both. This is a locally signed, unnotarized build.
 

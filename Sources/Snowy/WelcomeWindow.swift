@@ -6,13 +6,10 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     var onClose: (() -> Void)?
 
     init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 500),
-                              styleMask: [.titled, .closable, .fullSizeContentView],
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: WelcomeView.contentSize),
+                              styleMask: [.titled, .closable],
                               backing: .buffered, defer: false)
         window.title = "Welcome to Snowy"
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
         window.animationBehavior = .none
@@ -35,231 +32,272 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) { onClose?() }
 }
 
-/// Static vector illustrations keep the first-run window light. The initializer
-/// also permits offscreen previews without opening a window or starting NSApp.
+private enum WelcomeStep: Int, CaseIterable {
+    case desktop, wind, menu
+
+    var title: String {
+        switch self {
+        case .desktop: "Snow on your desktop"
+        case .wind: "Sweep snow and set the wind"
+        case .menu: "Snowy in the menu bar"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .desktop: "Snow settles on windows, widgets, and the bottom Dock. When you move a window, its snow moves with it."
+        case .wind: "Sweep across a pile with your pointer. For a wider sweep, choose Shovel from Cursor Tool."
+        case .menu: "Click the snowflake in the menu bar to change snowfall, pause it, or clear settled snow."
+        }
+    }
+}
+
 struct WelcomeView: View {
-    @State private var page: Int
+    static let contentSize = CGSize(width: 680, height: 320)
+    @State private var step: WelcomeStep
     let onFinish: () -> Void
-    private let blue = Color(red: 0.12, green: 0.45, blue: 0.76)
 
     init(initialPage: Int = 0, onFinish: @escaping () -> Void) {
-        _page = State(initialValue: min(2, max(0, initialPage)))
+        _step = State(initialValue: WelcomeStep(rawValue: initialPage) ?? .desktop)
         self.onFinish = onFinish
-    }
-
-    private var title: String {
-        ["Give snow somewhere to land.", "Make a little weather.", "Always in your menu bar."][page]
-    }
-    private var detail: String {
-        ["Snow settles on windows, widgets and your bottom Dock.\nMove a window, and its snow comes along.",
-         "Brush piles with your pointer, or choose Shovel for a wider sweep.\nStretch and turn the wind arrow to change the breeze.",
-         "Click the snowflake to change snowfall, adjust wind,\npause the weather or clear the snow."][page]
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "snowflake").foregroundStyle(blue)
-                Text("Snowy").fontWeight(.medium)
-            }
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
-            .padding(.top, 33)
-            .padding(.bottom, 19)
+            HStack(spacing: 32) {
+                WelcomePreview(step: step)
+                    .frame(width: 284, height: 208)
+                    .accessibilityHidden(true)
 
-            WelcomeIllustration(page: page)
-                .frame(width: 460, height: 196)
-                .accessibilityHidden(true)
-
-            Text(title)
-                .font(.system(size: 27, weight: .semibold))
-                .tracking(-0.8)
-                .foregroundStyle(.primary)
-                .padding(.top, 24)
-                .accessibilityAddTraits(.isHeader)
-            Text(detail)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .lineSpacing(4)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: 466)
-                .padding(.top, 11)
-            Spacer(minLength: 18)
-            Divider().padding(.horizontal, 28)
-            HStack(spacing: 11) {
-                Button("Skip", action: onFinish)
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if page > 0 {
-                    Button("Back") { page -= 1 }
-                        .controlSize(.large)
-                }
-                Button(page == 2 ? "Let it snow" : "Continue") {
-                    if page == 2 { onFinish() } else { page += 1 }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .keyboardShortcut(.defaultAction)
-                .tint(blue)
-            }
-            .overlay(alignment: .center) {
-                HStack(spacing: 6) {
-                    ForEach(0..<3) { index in
-                        Circle().fill(index == page ? blue : Color.secondary.opacity(0.22))
-                            .frame(width: 5, height: 5)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(step.title)
+                        .font(.title2.weight(.semibold))
+                        .accessibilityAddTraits(.isHeader)
+                    Text(step.detail)
+                        .foregroundStyle(.secondary)
+                    if step == .wind {
+                        Text("Choose Wind… and drag the arrow to set its direction and strength.")
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Step \(page + 1) of 3")
-                .allowsHitTesting(false)
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, 28)
-            .padding(.top, 18)
-            .padding(.bottom, 24)
+            .frame(maxHeight: .infinity)
+
+            Divider()
+
+            HStack(spacing: 8) {
+                Button("Skip", action: onFinish)
+                Spacer()
+                if let previous = WelcomeStep(rawValue: step.rawValue - 1) {
+                    Button("Back") { step = previous }
+                }
+                Button(step == .menu ? "Let it snow" : "Continue") {
+                    if let next = WelcomeStep(rawValue: step.rawValue + 1) {
+                        step = next
+                    } else {
+                        onFinish()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+            }
+            .controlSize(.regular)
+            .overlay {
+                Text("\(step.rawValue + 1) of \(WelcomeStep.allCases.count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .accessibilityLabel("Step \(step.rawValue + 1) of \(WelcomeStep.allCases.count)")
+                    .allowsHitTesting(false)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
         }
-        .frame(width: 540, height: 500)
+        .frame(width: Self.contentSize.width, height: Self.contentSize.height)
         .background(Color(nsColor: .windowBackgroundColor))
         .onExitCommand(perform: onFinish)
     }
 }
 
-private struct WelcomeIllustration: View {
-    let page: Int
-    private let blue = Color(red: 0.18, green: 0.49, blue: 0.76)
+/// Feature previews drawn from sample content.
+private struct WelcomePreview: View {
+    let step: WelcomeStep
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var demoFinished = true
+    private let surface = Color(nsColor: .controlBackgroundColor)
+    private let divider = Color(nsColor: .separatorColor)
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 22)
-                .fill(LinearGradient(colors: [Color(red: 0.87, green: 0.94, blue: 0.99),
-                                              Color(red: 0.94, green: 0.97, blue: 0.99)],
-                                     startPoint: .topLeading, endPoint: .bottomTrailing))
-            switch page {
-            case 0: snowScene
-            case 1: windScene
-            default: menuScene
+            Color(nsColor: .underPageBackgroundColor)
+            switch step {
+            case .desktop: desktop
+            case .wind: wind
+            case .menu: menu
+            }
+        }
+        .clipShape(.rect(cornerRadius: 8))
+        .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(divider, lineWidth: 1) }
+        .task(id: step) {
+            demoFinished = reduceMotion || step == .menu
+            guard !demoFinished else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(250))
+                withAnimation(.easeInOut(duration: 0.45)) { demoFinished = true }
+            } catch {
+                // Leaving the page cancels its preview.
             }
         }
     }
 
-    private var snowScene: some View {
+    private var desktop: some View {
         ZStack {
-            ForEach(0..<12) { index in
-                Circle().fill(Color.white.opacity(0.95)).frame(width: index.isMultiple(of: 3) ? 4 : 3)
-                    .offset(x: CGFloat((index * 71) % 416) - 208,
-                            y: CGFloat((index * 47) % 158) - 84)
+            Color(red: 0.49, green: 0.55, blue: 0.62)
+            ForEach(0..<19) { index in
+                Circle()
+                    .fill(.white.opacity(index.isMultiple(of: 4) ? 0.85 : 0.48))
+                    .frame(width: index.isMultiple(of: 4) ? 3 : 2)
+                    .offset(x: CGFloat((index * 71) % 264) - 132,
+                            y: CGFloat((index * 67 + index * index * 7) % 188) - 94)
             }
-            miniatureWindow(width: 206, height: 111)
-                .rotationEffect(.degrees(-3))
-                .offset(x: -28, y: 5)
-            miniatureWindow(width: 122, height: 77)
-                .rotationEffect(.degrees(4))
-                .offset(x: 104, y: 44)
-            SnowCap().fill(.white).frame(width: 203, height: 16)
-                .rotationEffect(.degrees(-3)).offset(x: -28, y: -54)
-            SnowCap().fill(.white).frame(width: 120, height: 12)
-                .rotationEffect(.degrees(4)).offset(x: 104, y: 2)
+            sampleWindow("Notes", width: 150, height: 92)
+                .offset(x: demoFinished ? -34 : -56, y: -22)
+            sampleWindow("Finder", width: 120, height: 69)
+                .offset(x: 49, y: 36)
             Image(systemName: "cursorarrow")
-                .font(.system(size: 30, weight: .medium))
-                .foregroundStyle(Color(red: 0.18, green: 0.28, blue: 0.39))
-                .shadow(color: .white, radius: 0, x: 1, y: 1)
-                .offset(x: 34, y: -27)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(.black)
+                .shadow(color: .white.opacity(0.7), radius: 0, x: 1, y: 1)
+                .offset(x: demoFinished ? 18 : -4, y: -64)
         }
     }
 
-    private func miniatureWindow(width: CGFloat, height: CGFloat) -> some View {
+    private func sampleWindow(_ title: String, width: CGFloat, height: CGFloat) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 4) {
-                ForEach(0..<3) { _ in Circle().fill(Color(red: 0.73, green: 0.81, blue: 0.86)).frame(width: 5, height: 5) }
-                Spacer()
-            }
-            .padding(.horizontal, 11).frame(height: 23)
-            .background(Color(red: 0.94, green: 0.97, blue: 0.99))
-            VStack(alignment: .leading, spacing: 9) {
-                Capsule().fill(blue.opacity(0.13)).frame(width: width * 0.49, height: 5)
-                Capsule().fill(blue.opacity(0.09)).frame(width: width * 0.66, height: 5)
-                Capsule().fill(blue.opacity(0.09)).frame(width: width * 0.38, height: 5)
+            Text(title)
+                .font(.system(size: 9, weight: .medium))
+                .frame(maxWidth: .infinity)
+                .frame(height: 18)
+                .overlay(alignment: .leading) {
+                    HStack(spacing: 3) {
+                        ForEach([Color.red, .yellow, .green], id: \.self) { color in
+                            Circle().fill(color.opacity(0.75)).frame(width: 4, height: 4)
+                        }
+                    }
+                    .padding(.leading, 7)
+                }
+            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                Capsule().fill(.secondary.opacity(0.25)).frame(width: width * 0.44, height: 3)
+                Capsule().fill(.secondary.opacity(0.13)).frame(width: width * 0.63, height: 3)
+                Capsule().fill(.secondary.opacity(0.13)).frame(width: width * 0.36, height: 3)
                 Spacer(minLength: 0)
-            }.padding(15).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(width: width, height: height)
-        .background(.white.opacity(0.94))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(blue.opacity(0.13), lineWidth: 1) }
-        .shadow(color: blue.opacity(0.14), radius: 14, x: 0, y: 8)
+        .background(surface)
+        .clipShape(.rect(cornerRadius: 6))
+        .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(divider, lineWidth: 1) }
+        .shadow(color: .black.opacity(0.15), radius: 5, x: 0, y: 3)
+        .overlay(alignment: .top) {
+            SnowCap()
+                .fill(.white)
+                .frame(width: width - 8, height: 10)
+                .offset(y: -9)
+        }
     }
 
-    private var windScene: some View {
-        HStack(spacing: 32) {
-            VStack(alignment: .leading, spacing: 13) {
-                Label("Glove", systemImage: "hand.point.up.left.fill")
-                Label("Shovel", systemImage: "cursorarrow.rays")
-            }
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(blue.opacity(0.8))
+    private var wind: some View {
+        VStack(spacing: 9) {
+            Text("Wind")
+                .font(.system(size: 11, weight: .semibold))
             ZStack {
-                RoundedRectangle(cornerRadius: 19).fill(.white.opacity(0.86))
-                    .overlay { RoundedRectangle(cornerRadius: 19).strokeBorder(blue.opacity(0.14), lineWidth: 1) }
-                    .shadow(color: blue.opacity(0.09), radius: 14, x: 0, y: 7)
-                VStack(spacing: 20) {
+                RoundedRectangle(cornerRadius: 11).strokeBorder(divider, lineWidth: 1)
+                VStack(spacing: 14) {
                     ForEach(0..<5) { _ in
-                        HStack(spacing: 20) {
-                            ForEach(0..<5) { _ in Circle().fill(blue.opacity(0.22)).frame(width: 3, height: 3) }
+                        HStack(spacing: 14) {
+                            ForEach(0..<5) { _ in
+                                Circle().fill(.secondary.opacity(0.27)).frame(width: 2, height: 2)
+                            }
                         }
                     }
                 }
                 Path { path in
-                    path.move(to: CGPoint(x: 70, y: 85))
-                    path.addLine(to: CGPoint(x: 112, y: 40))
-                    path.move(to: CGPoint(x: 91, y: 42))
-                    path.addLine(to: CGPoint(x: 112, y: 40))
-                    path.addLine(to: CGPoint(x: 111, y: 62))
+                    path.move(to: CGPoint(x: 53, y: 53))
+                    path.addLine(to: CGPoint(x: 79, y: 27))
+                    path.move(to: CGPoint(x: 65, y: 28))
+                    path.addLine(to: CGPoint(x: 79, y: 27))
+                    path.addLine(to: CGPoint(x: 78, y: 41))
                 }
-                .stroke(blue, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
-                Circle().fill(blue).frame(width: 7, height: 7).offset(x: -5, y: 10)
+                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                .scaleEffect(demoFinished ? 1 : 0.55)
+                .rotationEffect(.degrees(demoFinished ? 0 : -32))
+                Circle().fill(Color.accentColor).frame(width: 4, height: 4)
             }
-            .frame(width: 150, height: 150)
+            .frame(width: 106, height: 106)
+            Text("68% · NE")
+                .font(.system(size: 10, weight: .medium).monospacedDigit())
         }
+        .padding(13)
+        .background(surface, in: RoundedRectangle(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(divider, lineWidth: 1) }
+        .shadow(color: .black.opacity(0.08), radius: 6, x: 0, y: 3)
     }
 
-    private var menuScene: some View {
-        ZStack(alignment: .topTrailing) {
-            HStack(spacing: 10) {
-                Image(systemName: "apple.logo").font(.system(size: 12, weight: .medium))
-                Text("Finder").font(.system(size: 10, weight: .semibold))
-                Text("File").font(.system(size: 10))
-                Text("Edit").font(.system(size: 10))
+    private var menu: some View {
+        VStack(alignment: .trailing, spacing: 3) {
+            HStack(spacing: 8) {
+                Image(systemName: "apple.logo")
+                Text("Finder").fontWeight(.semibold)
+                Text("File")
+                Text("Edit")
                 Spacer()
                 Image(systemName: "snowflake")
-                    .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(.white)
-                    .frame(width: 32, height: 25)
-                    .background(blue, in: RoundedRectangle(cornerRadius: 5))
-                Text("9:41").font(.system(size: 10, weight: .medium))
-            }
-            .padding(.horizontal, 12).frame(height: 34)
-            .background(.white.opacity(0.88), in: RoundedRectangle(cornerRadius: 8))
-            .foregroundStyle(Color(red: 0.22, green: 0.34, blue: 0.43))
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Snowy").font(.system(size: 11, weight: .semibold)).padding(.bottom, 10)
-                Label("Pause Snow", systemImage: "pause").padding(.bottom, 9)
-                Label("Clear Settled Snow", systemImage: "sparkles").padding(.bottom, 10)
-                Divider().padding(.bottom, 9)
-                HStack { Text("Steady"); Spacer(); Image(systemName: "checkmark").fontWeight(.semibold) }.padding(.bottom, 9)
-                HStack { Text("Wind…"); Spacer(); Image(systemName: "arrow.up.right") }
+                    .frame(width: 20, height: 17)
+                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 4))
+                Text("9:41")
             }
             .font(.system(size: 10))
-            .foregroundStyle(Color(red: 0.22, green: 0.34, blue: 0.43))
-            .padding(13)
-            .frame(width: 170)
-            .background(.white.opacity(0.96), in: RoundedRectangle(cornerRadius: 10))
-            .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(blue.opacity(0.13), lineWidth: 1) }
-            .shadow(color: blue.opacity(0.14), radius: 13, x: 0, y: 6)
-            .offset(x: -36, y: 39)
+            .padding(.horizontal, 8)
+            .frame(height: 24)
+            .background(surface)
+            .overlay(alignment: .bottom) { Divider() }
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text("Snowy").fontWeight(.semibold)
+                Divider()
+                Text("Pause Snow")
+                Text("Clear Settled Snow")
+                HStack {
+                    Text("Cursor Tool")
+                    Spacer()
+                    Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                }
+                Divider()
+                HStack {
+                    Text("Steady")
+                    Spacer()
+                    Image(systemName: "checkmark").foregroundStyle(.secondary)
+                }
+                Text("Wind…")
+            }
+            .font(.system(size: 10))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(width: 142)
+            .background(surface, in: RoundedRectangle(cornerRadius: 7))
+            .overlay { RoundedRectangle(cornerRadius: 7).strokeBorder(divider, lineWidth: 1) }
+            .shadow(color: .black.opacity(0.12), radius: 5, x: 0, y: 3)
+            .padding(.trailing, 27)
+            Spacer(minLength: 0)
         }
-        .frame(width: 330, height: 177, alignment: .top)
     }
 }
 
