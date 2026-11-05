@@ -36,7 +36,7 @@ Mention manual visual checks separately from automated tests. A successful build
 
 ## Make a release
 
-Update the version and build number in `App/Info.plist`, run the checks, then package the native build:
+For a local packaging check, run:
 
 ```sh
 ./scripts/package-release.sh
@@ -44,7 +44,16 @@ Update the version and build number in `App/Info.plist`, run the checks, then pa
 
 This writes an architecture-labelled DMG, ZIP, and their SHA-256 checksums into `build/releases/`. The DMG contains Snowy.app and an Applications shortcut over a Retina winter background. Packaging uses Python 3 with venv and pip to install two hash-pinned Finder metadata helpers in a temporary environment. It draws the artwork offscreen, writes Finder metadata directly to an owned staging image, and verifies the signed app, ZIP, disk-image checksum, background alias, and icon positions. It never opens Finder or launches Snowy.
 
-Increase the bundle build number with every release. Push a matching `v<version>` tag, then manually run the **Release** workflow with that tag. It tests and packages Snowy, signs the ZIP and `appcast.xml` using the `SNOWY_SPARKLE_PRIVATE_KEY` Actions secret, and publishes them with the DMG and checksums. The app bundle uses an ad-hoc signature. Sparkle verifies updates against the public key embedded in the bundle.
+The automated release workflow requires a [Developer ID Application certificate](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/) with its private key and credentials for Apple's notary service. For a local distribution build, set `SNOWY_CODESIGN_IDENTITY` to the Developer ID identity name or fingerprint and `SNOWY_NOTARY_PROFILE` to the name of a profile created with `xcrun notarytool store-credentials`, then run `./scripts/package-release.sh --notarize`.
+
+For the **Release** workflow, add these GitHub Actions secrets:
+
+- `SNOWY_DEVELOPER_ID_P12_BASE64` and `SNOWY_DEVELOPER_ID_P12_PASSWORD` for the password-protected certificate and private key export.
+- `SNOWY_CODESIGN_IDENTITY` for the full Developer ID Application name or fingerprint.
+- `SNOWY_NOTARY_KEY_BASE64`, `SNOWY_NOTARY_KEY_ID`, and `SNOWY_NOTARY_ISSUER_ID` for an [App Store Connect team API key](https://developer.apple.com/documentation/appstoreconnectapi/creating-api-keys-for-app-store-connect-api). The first value is the base64-encoded `.p8` file.
+- `SNOWY_SPARKLE_PRIVATE_KEY` for the existing update feed and ZIP signatures.
+
+Increase the bundle build number and version in `App/Info.plist`, push a matching `v<version>` tag, and run **Release** with that tag. The workflow signs Snowy and the bundled updater with Hardened Runtime, notarizes and staples the app and DMG, and verifies the distributed copies. It computes checksums and signs the appcast after notarization, then publishes the release. If Apple rejects a submission, inspect it with `xcrun notarytool log <submission-id> --keychain-profile <profile>` using credentials for the same team.
 
 Keep a protected backup of the signing key and publish a new version when release assets need to change. A future purchase or license check belongs in a separate entitlement flow. The one-click updater handles compatible updates on the existing channel.
 

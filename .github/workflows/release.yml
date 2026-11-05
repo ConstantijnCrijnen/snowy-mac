@@ -47,8 +47,55 @@ jobs:
           fi
       - name: Test geometry and physics
         run: swift test
-      - name: Build and package
-        run: ./scripts/package-release.sh
+      - name: Sign, notarize, and package
+        env:
+          SNOWY_DEVELOPER_ID_P12_BASE64: ${{ secrets.SNOWY_DEVELOPER_ID_P12_BASE64 }}
+          SNOWY_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.SNOWY_DEVELOPER_ID_P12_PASSWORD }}
+          SNOWY_CODESIGN_IDENTITY: ${{ secrets.SNOWY_CODESIGN_IDENTITY }}
+          SNOWY_NOTARY_KEY_BASE64: ${{ secrets.SNOWY_NOTARY_KEY_BASE64 }}
+          SNOWY_NOTARY_KEY_ID: ${{ secrets.SNOWY_NOTARY_KEY_ID }}
+          SNOWY_NOTARY_ISSUER_ID: ${{ secrets.SNOWY_NOTARY_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in SNOWY_DEVELOPER_ID_P12_BASE64 SNOWY_DEVELOPER_ID_P12_PASSWORD \
+                      SNOWY_CODESIGN_IDENTITY SNOWY_NOTARY_KEY_BASE64 SNOWY_NOTARY_KEY_ID SNOWY_NOTARY_ISSUER_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing release secret: $name" >&2
+              exit 1
+            fi
+          done
+
+          previous_umask="$(umask)"
+          umask 077
+          credentials_dir="$(mktemp -d "$RUNNER_TEMP/snowy-signing.XXXXXX")"
+          export SNOWY_CODESIGN_KEYCHAIN="$credentials_dir/release.keychain-db"
+          export SNOWY_NOTARY_PROFILE="snowy-notary"
+          cleanup() {
+            security delete-keychain "$SNOWY_CODESIGN_KEYCHAIN" >/dev/null 2>&1 || true
+            rm -rf "$credentials_dir"
+          }
+          trap cleanup EXIT
+          keychain_password="$(openssl rand -hex 32)"
+          security create-keychain -p "$keychain_password" "$SNOWY_CODESIGN_KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$SNOWY_CODESIGN_KEYCHAIN"
+          security unlock-keychain -p "$keychain_password" "$SNOWY_CODESIGN_KEYCHAIN"
+
+          printf '%s' "$SNOWY_DEVELOPER_ID_P12_BASE64" | /usr/bin/base64 -D > "$credentials_dir/signing.p12"
+          security import "$credentials_dir/signing.p12" -k "$SNOWY_CODESIGN_KEYCHAIN" \
+            -f pkcs12 -P "$SNOWY_DEVELOPER_ID_P12_PASSWORD" -x -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "$keychain_password" "$SNOWY_CODESIGN_KEYCHAIN" >/dev/null
+
+          printf '%s' "$SNOWY_NOTARY_KEY_BASE64" | /usr/bin/base64 -D > "$credentials_dir/notary.p8"
+          xcrun notarytool store-credentials "$SNOWY_NOTARY_PROFILE" --keychain "$SNOWY_CODESIGN_KEYCHAIN" \
+            --key "$credentials_dir/notary.p8" --key-id "$SNOWY_NOTARY_KEY_ID" --issuer "$SNOWY_NOTARY_ISSUER_ID"
+          rm -f "$credentials_dir/signing.p12" "$credentials_dir/notary.p8"
+          unset SNOWY_DEVELOPER_ID_P12_BASE64 SNOWY_DEVELOPER_ID_P12_PASSWORD \
+                SNOWY_NOTARY_KEY_BASE64 SNOWY_NOTARY_KEY_ID SNOWY_NOTARY_ISSUER_ID
+          umask "$previous_umask"
+
+          ./scripts/package-release.sh --notarize
       - name: Sign Sparkle update
         env:
           SNOWY_SPARKLE_PRIVATE_KEY: ${{ secrets.SNOWY_SPARKLE_PRIVATE_KEY }}

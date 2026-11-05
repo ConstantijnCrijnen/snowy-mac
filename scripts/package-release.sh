@@ -3,11 +3,22 @@ set -euo pipefail
 
 project_root="${0:A:h:h}"
 cd "$project_root"
-if [[ $# -gt 1 || ($# -eq 1 && "$1" != "--skip-build") ]]; then
-  print -u2 "Usage: ./scripts/package-release.sh [--skip-build]"
+mode="${1:-}"
+if [[ $# -gt 1 || ($# -eq 1 && "$mode" != "--skip-build" && "$mode" != "--notarize") ]]; then
+  print -u2 "Usage: ./scripts/package-release.sh [--skip-build | --notarize]"
   exit 2
 fi
-if [[ $# -eq 0 ]]; then
+if [[ "$mode" == "--notarize" ]]; then
+  : "${SNOWY_CODESIGN_IDENTITY:?Set a Developer ID Application signing identity.}"
+  : "${SNOWY_NOTARY_PROFILE:?Set the name of a notarytool Keychain profile.}"
+  dmg_sign=(--sign "$SNOWY_CODESIGN_IDENTITY" --timestamp)
+  notary_auth=(--keychain-profile "$SNOWY_NOTARY_PROFILE")
+  if [[ -n "${SNOWY_CODESIGN_KEYCHAIN:-}" ]]; then
+    dmg_sign+=(--keychain "$SNOWY_CODESIGN_KEYCHAIN")
+    notary_auth+=(--keychain "$SNOWY_CODESIGN_KEYCHAIN")
+  fi
+  "$project_root/scripts/build-app.sh" --developer-id
+elif [[ "$mode" != "--skip-build" ]]; then
   "$project_root/scripts/build-app.sh"
 fi
 
@@ -54,11 +65,42 @@ for filename in "$archive_name" "$dmg_name" "$archive_name.sha256" "$dmg_name.sh
   fi
 done
 
-# Keep the ZIP for existing download links and people who prefer an archive.
+function notarize_and_staple() {
+  local submission="$1" target="$2" result="$staging_dir/notary-result.plist"
+  if ! xcrun notarytool submit "$submission" "${notary_auth[@]}" \
+      --wait --timeout 30m --output-format plist > "$result" \
+      || [[ "$(plutil -extract status raw "$result" 2>/dev/null || true)" != "Accepted" ]]; then
+    local submission_id
+    submission_id="$(plutil -extract id raw "$result" 2>/dev/null || true)"
+    print -u2 "Apple did not accept the notarization submission for ${submission:t}."
+    if [[ -n "$submission_id" ]]; then
+      print -u2 "See notarytool log for submission $submission_id."
+    fi
+    return 1
+  fi
+  xcrun stapler staple "$target"
+  xcrun stapler validate "$target"
+}
+
+if [[ "$mode" == "--notarize" ]]; then
+  # Notarize the app through a temporary ZIP. Only the extracted .app can carry
+  # a ticket, so the release ZIP is made from the stapled app below.
+  mkdir "$staging_dir/signed"
+  ditto "$app_dir" "$staging_dir/signed/Snowy.app"
+  app_dir="$staging_dir/signed/Snowy.app"
+  ditto -c -k --sequesterRsrc --keepParent "$app_dir" "$staging_dir/notary-upload.zip"
+  notarize_and_staple "$staging_dir/notary-upload.zip" "$app_dir"
+fi
+
+# The ZIP is the Sparkle update archive and an alternative to the DMG.
 ditto -c -k --sequesterRsrc --keepParent "$app_dir" "$staging_dir/$archive_name"
 mkdir "$staging_dir/verify"
 ditto -x -k "$staging_dir/$archive_name" "$staging_dir/verify"
 codesign --verify --deep --strict "$staging_dir/verify/Snowy.app"
+if [[ "$mode" == "--notarize" ]]; then
+  xcrun stapler validate "$staging_dir/verify/Snowy.app"
+  syspolicy_check distribution "$staging_dir/verify/Snowy.app"
+fi
 
 # Prepare the Finder view directly on an owned writable staging image. This
 # captures its real volume/file IDs, without asking Finder to open anything.
@@ -84,12 +126,20 @@ hdiutil detach -quiet "$staging_dir/mount"
 mounted=0
 hdiutil convert -quiet "$staging_dir/writable.dmg" -format UDZO \
   -o "$staging_dir/$dmg_name"
+if [[ "$mode" == "--notarize" ]]; then
+  codesign "${dmg_sign[@]}" "$staging_dir/$dmg_name"
+  notarize_and_staple "$staging_dir/$dmg_name" "$staging_dir/$dmg_name"
+  codesign --verify --strict "$staging_dir/$dmg_name"
+fi
 hdiutil verify -quiet "$staging_dir/$dmg_name"
 hdiutil attach -quiet -readonly -nobrowse -noautoopen \
   -mountpoint "$staging_dir/mount" "$staging_dir/$dmg_name"
 mounted=1
 "$layout_python" "$project_root/scripts/dmg-layout.py" verify "$staging_dir/mount"
 codesign --verify --deep --strict "$staging_dir/mount/Snowy.app"
+if [[ "$mode" == "--notarize" ]]; then
+  xcrun stapler validate "$staging_dir/mount/Snowy.app"
+fi
 if [[ ! -L "$staging_dir/mount/Applications" || "$(readlink "$staging_dir/mount/Applications")" != /Applications ]]; then
   print -u2 "The disk image is missing its Applications shortcut."
   exit 1

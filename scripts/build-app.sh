@@ -2,6 +2,17 @@
 set -euo pipefail
 project_root="${0:A:h:h}"
 cd "$project_root"
+if [[ $# -gt 1 || ($# -eq 1 && "$1" != "--developer-id") ]]; then
+  print -u2 "Usage: ./scripts/build-app.sh [--developer-id]"
+  exit 2
+fi
+if [[ $# -eq 1 ]]; then
+  : "${SNOWY_CODESIGN_IDENTITY:?Set a Developer ID Application signing identity.}"
+  release_sign=(--force --sign "$SNOWY_CODESIGN_IDENTITY" --options runtime --timestamp)
+  if [[ -n "${SNOWY_CODESIGN_KEYCHAIN:-}" ]]; then
+    release_sign+=(--keychain "$SNOWY_CODESIGN_KEYCHAIN")
+  fi
+fi
 if [[ "$(uname -s)" != "Darwin" ]]; then
   print -u2 "Snowy builds on macOS with Xcode and its Metal toolchain."
   exit 1
@@ -52,7 +63,20 @@ xcrun -sdk macosx metallib "$project_root/.build/shaders/Snow.air" \
 mkdir "$staging_dir/Snowy.iconset"
 swift "$project_root/scripts/render-install-art.swift" icon "$staging_dir/Snowy.iconset"
 iconutil -c icns "$staging_dir/Snowy.iconset" -o "$staged_app/Contents/Resources/Snowy.icns"
-codesign --force --sign - "$staged_app"
+if [[ $# -eq 1 ]]; then
+  framework="$staged_app/Contents/Frameworks/Sparkle.framework"
+  sparkle_version="$framework/Versions/Current"
+  # Follow Sparkle's inside-out signing order and preserve Downloader's entitlements.
+  codesign "${release_sign[@]}" --preserve-metadata=entitlements "$sparkle_version/XPCServices/Downloader.xpc"
+  for component in XPCServices/Installer.xpc Autoupdate Updater.app; do
+    codesign "${release_sign[@]}" "$sparkle_version/$component"
+  done
+  codesign "${release_sign[@]}" "$framework"
+  codesign "${release_sign[@]}" "$staged_app"
+  codesign --verify --strict -R='anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists' "$staged_app"
+else
+  codesign --force --sign - "$staged_app"
+fi
 codesign --verify --deep --strict "$staged_app"
 # Replace only the generated bundle, after every build and signing step succeeds.
 rm -rf "$app_dir"
