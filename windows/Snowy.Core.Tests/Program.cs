@@ -10,6 +10,7 @@ var cases = new (string Name, Action Run)[]
     ("decorations accept falling snow as physical surfaces", DecorationsCatchSnow),
     ("snow from a closed support falls onto the lower exposed window", ClosedSupportSnowFallsDown),
     ("moving windows push covered snow toward either leading side", MovingWindowPushesBothWays),
+    ("loose snow rebounds from a window wall on its entry side", ParcelReboundsFromRightWall),
     ("the snow cap continues falling after a surface reaches its limit", SnowfallContinuesAtCapacity),
 };
 
@@ -140,6 +141,26 @@ static void AssertLeadingPush(float startingX, float targetX, bool expectRight)
     else
         Check(snow.LoosePatches.Any(patch => patch.Position.X < targetX),
             "Leftward motion should push snow beyond the left boundary.");
+}
+
+static void ParcelReboundsFromRightWall()
+{
+    var snow = new SnowSimulation(600, 500);
+    var support = new Body(1, new Vector2(0, 300), new Vector2(600, 180));
+    var wall = new Body(2, new Vector2(240, 260), new Vector2(105, 45), BodyKind.Window, 0);
+    snow.SetBodies(new[] { support, wall });
+    Advance(snow, 900);
+
+    var oldMover = new Body(3, new Vector2(800, 240), new Vector2(120, 120));
+    var newMover = oldMover with { Position = new Vector2(350, 240) };
+    snow.SetBodies(new[] { support, wall, oldMover });
+    snow.SetBodies(new[] { support, wall, newMover });
+    Check(snow.LoosePatches.Count > 0 && snow.LoosePatches.Min(patch => patch.Position.X) < newMover.Left,
+        "The leftward-moving window should eject material toward the nearby wall.");
+
+    snow.Step(0.05f, Snowfall.Flurry, Vector2.Zero, null, SnowTool.Glove, false);
+    Check(snow.LoosePatches.Any(patch => patch.Position.X > wall.Right),
+        "Material arriving from the wall's right side should rebound to that side.");
 }
 
 static void SnowfallContinuesAtCapacity()

@@ -51,9 +51,18 @@ public sealed class DecorationService
         includeDesktopIcons = enabled;
         lock (gate)
         {
-            Persist();
             iconGeneration++;
-            if (!enabled) iconBodies = new Dictionary<string, IReadOnlyList<Body>>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                Persist();
+                if (!enabled) iconBodies = new Dictionary<string, IReadOnlyList<Body>>(StringComparer.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                includeDesktopIcons = !enabled;
+                iconGeneration++;
+                throw;
+            }
         }
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -70,8 +79,15 @@ public sealed class DecorationService
         EnsureLoaded();
         lock (gate)
         {
+            var hadPrevious = scenes.TryGetValue(screenId, out var previous);
             scenes[screenId] = scene.Bounded(catalog.Ids);
-            Persist();
+            try { Persist(); }
+            catch
+            {
+                if (hadPrevious) scenes[screenId] = previous!;
+                else scenes.Remove(screenId);
+                throw;
+            }
         }
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -245,8 +261,13 @@ public sealed class DecorationService
         EnsureLoaded();
         lock (gate)
         {
-            scenes.Remove(screenId);
-            Persist();
+            var hadPrevious = scenes.Remove(screenId, out var previous);
+            try { Persist(); }
+            catch
+            {
+                if (hadPrevious) scenes[screenId] = previous!;
+                throw;
+            }
             lightRuntimes.Remove(screenId);
         }
         Changed?.Invoke(this, EventArgs.Empty);

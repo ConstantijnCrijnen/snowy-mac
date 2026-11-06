@@ -49,8 +49,12 @@ public sealed class ScenePanel : UserControl
             {
                 if (SelectedScreen() is { } screen)
                 {
-                    decorations.SelectPreset(screen.Id, id, screen);
-                    message.Text = id == DecorationPreset.None ? "Just snow." : $"{title} scene applied.";
+                    try
+                    {
+                        decorations.SelectPreset(screen.Id, id, screen);
+                        message.Text = id == DecorationPreset.None ? "Just snow." : $"{title} scene applied.";
+                    }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException) { message.Text = "The scene could not be saved. Check the Snowy folder under AppData."; }
                 }
             };
             grid.Children.Add(button);
@@ -61,8 +65,11 @@ public sealed class ScenePanel : UserControl
         actions.Children.Add(Button("Customize Scene…", (_, _) => decorations.OpenEditor(desktop), true));
         actions.Children.Add(Button("Clear Scene", (_, _) =>
         {
-            if (SelectedScreen() is { } screen) decorations.Clear(screen.Id);
-            message.Text = "The scene is clear.";
+            if (SelectedScreen() is { } screen)
+            {
+                try { decorations.Clear(screen.Id); message.Text = "The scene is clear."; }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { message.Text = "The scene could not be saved. Check the Snowy folder under AppData."; }
+            }
         }));
         stack.Children.Add(actions);
         stack.Children.Add(message);
@@ -163,8 +170,8 @@ internal sealed class SceneEditor : UserControl
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 14, 4)
         };
-        iconAnchors.Checked += (_, _) => { service.SetDesktopIconAnchors(true); DrawScene(); };
-        iconAnchors.Unchecked += (_, _) => { service.SetDesktopIconAnchors(false); DrawScene(); };
+        iconAnchors.Checked += (_, _) => ToggleIconAnchors(iconAnchors, true);
+        iconAnchors.Unchecked += (_, _) => ToggleIconAnchors(iconAnchors, false);
         DockPanel.SetDock(iconAnchors, Dock.Right);
         header.Children.Add(iconAnchors);
         DockPanel.SetDock(header, Dock.Top);
@@ -299,8 +306,28 @@ internal sealed class SceneEditor : UserControl
     private void SaveScene()
     {
         if (Screen is not { } screen) return;
-        service.Save(screen.Id, scene);
-        status.Text = "Scene saved to this Windows account.";
+        try
+        {
+            service.Save(screen.Id, scene);
+            status.Text = "Scene saved to this Windows account.";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { status.Text = "The scene could not be saved. Check the Snowy folder under AppData."; }
+    }
+
+    private void ToggleIconAnchors(CheckBox checkbox, bool enabled)
+    {
+        if (service.IncludeDesktopIcons == enabled) return;
+        try
+        {
+            service.SetDesktopIconAnchors(enabled);
+            status.Text = enabled ? "Shortcut edges are available as light anchors." : "Shortcut anchors are hidden.";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            checkbox.IsChecked = service.IncludeDesktopIcons;
+            status.Text = "The setting could not be saved. Check the Snowy folder under AppData.";
+        }
+        DrawScene();
     }
 
     private void AddProp(string id, Point normalized)
