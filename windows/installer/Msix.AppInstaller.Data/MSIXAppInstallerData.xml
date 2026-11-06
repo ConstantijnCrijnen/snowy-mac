@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AppInstallerUX xmlns="http://schemas.microsoft.com/msix/appinstallerux"
+                xmlns:ux="http://schemas.microsoft.com/msix/appinstallerux"
+                xmlns:ux2="http://schemas.microsoft.com/msix/appinstallerux/2"
+                IgnorableNamespaces="ux ux2"
+                Version="1.0.0">
+  <UX AccentColor="#1687E8"
+      FontFamily="Segoe UI"
+      AllowUserInteraction="true"
+      BackgroundColor="#F5FAFE"
+      AppNameInTitle="true"
+      HyperLinkFontSize="12">
+    <Icon HorizontalAlignment="center"
+          Logo="PackageAssets\Snowy150.png"
+          TopMargin="44" />
+    <Buttons HorizontalAlignment="center"
+             Text="Snowy"
+             IsSecondaryButtonAccent="false" />
+    <LaunchWhenReady HorizontalAlignment="center" />
+    <AppInformation Mode="flyout" />
+    <HyperLinks TopMargin="24">
+      <HyperLink Text="Visit snowy.aauburn.com"
+                 Url="https://snowy.aauburn.com/"
+                 HorizontalAlignment="center" />
+    </HyperLinks>
+  </UX>
+</AppInstallerUX>

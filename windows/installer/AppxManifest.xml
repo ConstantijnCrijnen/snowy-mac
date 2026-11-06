@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
          xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
          xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-         IgnorableNamespaces="uap rescap">
-  <Identity Name="ArchieAuburn.Snowy" Publisher="CN=Snowy Development" Version="0.1.0.0" ProcessorArchitecture="x64" />
+         IgnorableNamespaces="uap uap10 rescap">
+  <Identity Name="ArchieAuburn.Snowy" Publisher="CN=Snowy Development" Version="0.1.1.0" ProcessorArchitecture="x64" />
   <Properties>
     <DisplayName>Snowy</DisplayName>
     <PublisherDisplayName>Archie Auburn</PublisherDisplayName>
     <Logo>PackageAssets\Snowy50.png</Logo>
+    <uap10:PackageIntegrity><uap10:Content Enforcement="on" /></uap10:PackageIntegrity>
   </Properties>
   <Dependencies>
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26100.0" />

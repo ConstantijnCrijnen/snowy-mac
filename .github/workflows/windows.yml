@@ -18,20 +18,45 @@ concurrency:
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: windows
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           global-json-file: windows/global.json
       - name: Test snow physics
         run: dotnet run --configuration Release --project Snowy.Core.Tests
-      - name: Build portable previews and validate MSIX layout
-        run: ./installer/package.ps1
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - name: Build and scan the VM installer
+        run: |
+          $certificate = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=Snowy VM Preview' `
+            -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -KeyExportPolicy NonExportable `
+            -NotAfter (Get-Date).AddDays(30) -CertStoreLocation Cert:\CurrentUser\My
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'snowy-preview-signing.cer'
+          try {
+            Export-Certificate -Cert $certificate -FilePath $certificatePath | Out-Null
+            Import-Certificate -FilePath $certificatePath -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
+            ./installer/package.ps1 -PreviewCertificateThumbprint $certificate.Thumbprint -UpdateDefenderSignatures -AllowDefenderUnavailable
+          } finally {
+            Remove-Item -LiteralPath "Cert:\LocalMachine\TrustedPeople\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -DeleteKey -ErrorAction SilentlyContinue
+          }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: Snowy-Windows-previews
-          path: build/windows/*/Snowy-Windows-*.zip
+          path: build/windows/*/Snowy-Windows-preview.msixbundle
+          archive: false
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: build/windows/*/Snowy-Preview.cer
+          archive: false
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: build/windows/*/Snowy-Windows-preview.msixbundle.sha256
+          archive: false
           if-no-files-found: error

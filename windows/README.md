@@ -23,15 +23,33 @@ dotnet publish Snowy.Windows -c Release -r win-arm64 --self-contained true -o ..
 dotnet publish Snowy.Windows -c Release -r win-x64 --self-contained true -o ../build/windows-preview-x64
 ```
 
-Copy the whole output folder to Windows and run `Snowy.exe` there. For Windows 11 on an M-series Mac in UTM, use `win-arm64`. The native Windows workflow also produces both preview ZIPs as Actions artifacts. Preview builds use the same tray and desktop code as the installer.
+Copy the whole output folder to Windows and run `Snowy.exe` there. For Windows 11 on an M-series Mac in UTM, use `win-arm64`. These commands are for development builds.
 
-## Installer and updates
+## Try the installer in a Windows VM
 
-Run `./installer/package.ps1` from PowerShell 7 on Windows with the Windows SDK packaging tools installed. It builds self-contained ARM64 and x64 previews and an unsigned MSIX bundle for packaging checks.
+Download `Snowy-Windows-preview.msixbundle`, `Snowy-Preview.cer`, and the `.sha256` file from the Windows checks run for the branch. The files are available directly as Actions artifacts. Copy them into a disposable Windows 11 VM. One bundle contains both ARM64 and x64. Compare the bundle's SHA-256 with the checksum and the certificate thumbprint with the one printed in the GitHub Actions log.
 
-A distribution build needs a trusted code-signing certificate with its private key accessible in the Windows current-user certificate store. Pass its thumbprint to `-CertificateThumbprint` and use a monotonically increasing four-part `-Version`. The package identity and publisher must remain stable across releases. The script verifies the signed bundle and generates the App Installer feed only when signing succeeds.
+The VM preview has a temporary self-signed certificate and its own package identity. In the VM only, open PowerShell as administrator and trust that exact certificate in **Trusted People**.
 
-When releasing, attach the signed bundle to a GitHub release tagged `windows-v<four-part-version>` with `--latest=false` so the macOS download continues to resolve to the latest Mac release. Serve `Snowy.appinstaller` at `https://snowy.aauburn.com/windows/Snowy.appinstaller` with content type `application/appinstaller`. Install through that feed to enable the blue **Update** tray item. Windows checks the installed package's update association and verifies the publisher before installation. Keep purchase or entitlement checks separate from this update channel.
+```powershell
+Get-FileHash -Algorithm SHA256 .\Snowy-Windows-preview.msixbundle
+Get-PfxCertificate -FilePath .\Snowy-Preview.cer | Format-List Subject,Thumbprint,NotAfter
+Import-Certificate -FilePath .\Snowy-Preview.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+```
+
+Double-click the bundle and choose **Install**. App Installer shows Snowy's icon and winter-blue styling where custom installer themes are supported. The package manages its own uninstall in **Settings → Apps → Installed apps**. The preview certificate expires after 30 days and is for this VM only. Smart App Control on the VM may still require a publicly trusted build. [Microsoft's MSIX signing guide](https://learn.microsoft.com/en-us/windows/msix/package/sign-msix-package-guide)
+
+## Distribution and updates
+
+Run `./installer/package.ps1` from PowerShell 7 on Windows with the Windows SDK packaging tools installed. Without signing arguments, it creates an unsigned bundle for layout checks. For direct distribution, pass `-CertificateThumbprint` for a trusted provider's certificate in the current user's `My` store, or use `-ArtifactSigningDlib`, `-ArtifactSigningMetadata` and `-Publisher` with Microsoft's Artifact Signing tools. Use a monotonically increasing four-part `-Version` and keep the package name and verified publisher subject stable across releases.
+
+The release build Authenticode-signs Snowy's own EXE and DLLs, signs the dual-architecture MSIX bundle, verifies the signatures and timestamps, and checks the payloads and final bundle with Defender Antivirus. Run the release build elevated on a Windows build machine with active Defender. `-UpdateDefenderSignatures` updates the scan definitions first. Windows enforces package integrity at launch. The build emits the update feed and SHA-256 only after these checks pass.
+
+When releasing, attach the signed bundle to a GitHub release tagged `windows-v<four-part-version>` with `--latest=false` so the macOS download continues to resolve to the latest Mac release. Serve `Snowy.appinstaller` at `https://snowy.aauburn.com/windows/Snowy.appinstaller` with content type `application/appinstaller`. Link to the file directly so users can download and double-click it. Install through that feed to enable the blue **Update** tray item. Windows checks the installed package's update association and verifies the publisher before installation. Keep purchase or entitlement checks separate from this update channel. [App Installer hosting](https://learn.microsoft.com/en-us/windows/msix/app-installer/app-installer-file-overview)
+
+## Defender and SmartScreen
+
+Check the exact release download in a clean Windows 11 VM with the default protections enabled. If Defender Antivirus quarantines a file, record its detection name, Snowy version, and SHA-256, then submit that exact file as a software developer for Microsoft to review. A SmartScreen warning about an unrecognized app is a separate reputation check. Use the same trusted signing identity for each release. Microsoft Store distribution is the path that avoids SmartScreen download warnings. [Microsoft file submission](https://www.microsoft.com/en-us/wdsi/filesubmission/) · [SmartScreen reputation](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
 
 ## Desktop checks
 

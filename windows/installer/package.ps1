@@ -1,8 +1,15 @@
 param(
     [ValidatePattern('^\d{1,5}\.\d{1,5}\.\d{1,5}\.\d{1,5}$')]
-    [string] $Version = "0.1.0.0",
+    [string] $Version = "0.1.1.0",
     [ValidatePattern('^([0-9A-Fa-f]{40})?$')]
-    [string] $CertificateThumbprint = ""
+    [string] $CertificateThumbprint = "",
+    [ValidatePattern('^([0-9A-Fa-f]{40})?$')]
+    [string] $PreviewCertificateThumbprint = "",
+    [string] $ArtifactSigningDlib = "",
+    [string] $ArtifactSigningMetadata = "",
+    [string] $Publisher = "",
+    [switch] $UpdateDefenderSignatures,
+    [switch] $AllowDefenderUnavailable
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,6 +25,16 @@ function Invoke-Checked {
     if ($LASTEXITCODE -ne 0) { throw "$Executable exited with code $LASTEXITCODE." }
 }
 
+$preview = [bool]$PreviewCertificateThumbprint
+$cloudSigning = [bool]($ArtifactSigningDlib -or $ArtifactSigningMetadata -or $Publisher)
+if (@($preview, $cloudSigning, [bool]$CertificateThumbprint).Where({ $_ }).Count -gt 1) {
+    throw "Choose one signing method."
+}
+$release = $cloudSigning -or [bool]$CertificateThumbprint
+if ($AllowDefenderUnavailable -and $release) {
+    throw "A release requires a successful Defender scan."
+}
+
 $kits = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin"
 $kit = Get-ChildItem -Directory $kits | Where-Object { $_.Name -match '^10\.\d+\.\d+\.\d+$' } |
     Sort-Object { [version]$_.Name } -Descending |
@@ -26,15 +43,50 @@ if (-not $kit) { throw "Install the Windows SDK with the MSIX packaging tools." 
 $makeAppx = Join-Path $kit.FullName "x64\MakeAppx.exe"
 $signTool = Join-Path $kit.FullName "x64\SignTool.exe"
 $project = Join-Path $PSScriptRoot "../Snowy.Windows/Snowy.Windows.csproj"
-$publisher = "CN=Snowy Development"
-if ($CertificateThumbprint) {
-    $certificate = Get-Item "Cert:\CurrentUser\My\$CertificateThumbprint"
-    if (-not $certificate.HasPrivateKey) { throw "The signing certificate has no accessible private key." }
-    $publisher = $certificate.Subject
+$packageName = "ArchieAuburn.Snowy"
+$bundleName = "Snowy-Windows.msixbundle"
+$signArguments = @()
+if ($cloudSigning) {
+    if (-not $Publisher -or -not $ArtifactSigningDlib -or -not $ArtifactSigningMetadata) {
+        throw "Artifact Signing requires its installed dlib, a metadata file, and the verified publisher subject."
+    }
+    $ArtifactSigningDlib = (Get-Item -LiteralPath $ArtifactSigningDlib).FullName
+    $ArtifactSigningMetadata = (Get-Item -LiteralPath $ArtifactSigningMetadata).FullName
+    $signArguments = @("/dlib", $ArtifactSigningDlib, "/dmdf", $ArtifactSigningMetadata,
+        "/tr", "https://timestamp.acs.microsoft.com", "/td", "SHA256")
+} elseif ($release -or $preview) {
+    $thumbprint = if ($preview) { $PreviewCertificateThumbprint } else { $CertificateThumbprint }
+    $certificate = Get-Item -LiteralPath "Cert:\CurrentUser\My\$thumbprint"
+    if (-not $certificate.HasPrivateKey -or $certificate.NotAfter -le (Get-Date)) {
+        throw "The signing certificate must be current and have an accessible private key."
+    }
+    if ($release -and $certificate.Subject -eq $certificate.Issuer) {
+        throw "Release signing requires a certificate issued by a trusted provider."
+    }
+    $Publisher = $certificate.Subject
+    $signArguments = @("/sha1", $thumbprint)
+    if ($release) {
+        $signArguments += @("/tr", "https://timestamp.digicert.com", "/td", "SHA256")
+    } else {
+        $packageName += ".Preview"
+        $bundleName = "Snowy-Windows-preview.msixbundle"
+    }
+} else {
+    $Publisher = "CN=Snowy Development"
+    $bundleName = "Snowy-Windows-unsigned.msixbundle"
 }
+
+function Sign-Artifact([string] $Path) {
+    Invoke-Checked $signTool (@("sign", "/fd", "SHA256") + $signArguments + $Path)
+    $verify = @("verify", "/pa")
+    if ($release) { $verify += "/tw" }
+    Invoke-Checked $signTool ($verify + $Path)
+}
+
 $root = Join-Path $PSScriptRoot "../../build/windows/$Version-$([Guid]::NewGuid().ToString('N'))"
 $root = (New-Item -Type Directory $root -Force).FullName
 $packages = (New-Item -Type Directory (Join-Path $root "packages")).FullName
+$scanPaths = @()
 Push-Location (Join-Path $PSScriptRoot "..")
 try {
     foreach ($architecture in @("x64", "arm64")) {
@@ -42,32 +94,68 @@ try {
         Invoke-Checked dotnet @("publish", $project, "-c", "Release", "-r", "win-$architecture",
             "--self-contained", "true", "-o", $staging, "-p:Version=$Version", "-p:DebugType=none")
         Copy-Item (Join-Path $PSScriptRoot "../../LICENSE") (Join-Path $staging "LICENSE.txt")
-        Compress-Archive -Path (Join-Path $staging "*") -DestinationPath (Join-Path $root "Snowy-Windows-$architecture.zip")
+        if ($signArguments.Count) {
+            foreach ($binary in @("Snowy.exe", "Snowy.dll", "Snowy.Core.dll")) {
+                Sign-Artifact (Join-Path $staging $binary)
+            }
+        }
+
         $assets = (New-Item -Type Directory (Join-Path $staging "PackageAssets")).FullName
         Copy-Item (Join-Path $PSScriptRoot "Snowy*.png") $assets
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot "Msix.AppInstaller.Data") -Destination $staging -Recurse
         [xml]$manifest = Get-Content -Raw (Join-Path $PSScriptRoot "AppxManifest.xml")
-        $manifest.Package.Identity.Publisher = $publisher
+        $manifest.Package.Identity.Name = $packageName
+        $manifest.Package.Identity.Publisher = $Publisher
         $manifest.Package.Identity.Version = $Version
         $manifest.Package.Identity.ProcessorArchitecture = $architecture
+        if ($preview) {
+            $manifest.Package.Properties.DisplayName = "Snowy Preview"
+            $manifest.Package.Applications.Application.VisualElements.DisplayName = "Snowy Preview"
+        }
         $manifest.Save((Join-Path $staging "AppxManifest.xml"))
-        Invoke-Checked $makeAppx @("pack", "/no", "/d", $staging, "/p", (Join-Path $packages "Snowy-$architecture.msix"))
+        $package = Join-Path $packages "Snowy-$architecture.msix"
+        Invoke-Checked $makeAppx @("pack", "/no", "/d", $staging, "/p", $package)
+        $archive = [IO.Compression.ZipFile]::OpenRead($package)
+        try {
+            $entries = $archive.Entries.FullName.Replace('\', '/')
+            foreach ($required in @("Msix.AppInstaller.Data/MSIXAppInstallerData.xml", "PackageAssets/Snowy150.png")) {
+                if ($required -cnotin $entries) { throw "The $architecture package is missing $required." }
+            }
+        } finally { $archive.Dispose() }
+        $scanPaths += $staging
     }
-    $bundle = Join-Path $root "Snowy-Windows.msixbundle"
+
+    $bundle = Join-Path $root $bundleName
     Invoke-Checked $makeAppx @("bundle", "/no", "/bv", $Version, "/d", $packages, "/p", $bundle)
-    if ($CertificateThumbprint) {
-        Invoke-Checked $signTool @("sign", "/sha1", $CertificateThumbprint, "/fd", "SHA256",
-            "/tr", "https://timestamp.digicert.com", "/td", "SHA256", $bundle)
-        Invoke-Checked $signTool @("verify", "/pa", $bundle)
-        $publisherXml = [Security.SecurityElement]::Escape($publisher)
+    if ($signArguments.Count) { Sign-Artifact $bundle }
+
+    if ($release -or $preview) {
+        $scanPaths += $bundle
+        & (Join-Path $PSScriptRoot "scan-defender.ps1") -Path $scanPaths -UpdateSignatures:$UpdateDefenderSignatures
+        if ($LASTEXITCODE -eq 2 -and $AllowDefenderUnavailable) {
+            Write-Warning "Defender is unavailable. This preview has no Defender scan result."
+        } elseif ($LASTEXITCODE -ne 0) {
+            throw "The Windows Defender gate failed (exit $LASTEXITCODE)."
+        }
+    }
+
+    if ($preview) {
+        Export-Certificate -Cert $certificate -FilePath (Join-Path $root "Snowy-Preview.cer") | Out-Null
+        Write-Host "Preview certificate SHA-1 thumbprint: $($certificate.Thumbprint)"
+    }
+    if ($release) {
+        $publisherXml = [Security.SecurityElement]::Escape($Publisher)
         @"
 <?xml version="1.0" encoding="utf-8"?>
 <AppInstaller xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
               Uri="https://snowy.aauburn.com/windows/Snowy.appinstaller" Version="$Version">
-  <MainBundle Name="ArchieAuburn.Snowy" Publisher="$publisherXml" Version="$Version"
-              Uri="https://github.com/soloiaros/snowy-mac/releases/download/windows-v$Version/Snowy-Windows.msixbundle" />
+  <MainBundle Name="$packageName" Publisher="$publisherXml" Version="$Version"
+              Uri="https://github.com/soloiaros/snowy-mac/releases/download/windows-v$Version/$bundleName" />
 </AppInstaller>
 "@ | Set-Content -Encoding utf8 (Join-Path $root "Snowy.appinstaller")
     }
+    $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $bundle).Hash.ToLowerInvariant()
+    "$hash  $bundleName" | Set-Content -Encoding ascii "$bundle.sha256"
     Write-Host "Windows artifacts: $root"
 }
 finally { Pop-Location }
