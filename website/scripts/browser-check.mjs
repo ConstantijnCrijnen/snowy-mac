@@ -509,8 +509,8 @@ async function downloadCheck(p, run, mobile = false) {
   assert.ok(await p.evaluate('document.querySelector("#download-dialog").open'));
   assert.equal(
     await p.evaluate('document.querySelector("#download-amount").value'),
-    "0",
-    "Download defaults to a free copy",
+    "2.99",
+    "The download window suggests $2.99",
   );
   assert.ok(
     await p.evaluate('document.querySelector("#download-dialog").contains(document.activeElement)'),
@@ -537,8 +537,8 @@ async function downloadCheck(p, run, mobile = false) {
   );
 
   await p.click("#download");
-  await setAmount(p, "#download-amount", "2.50");
   await p.click("#download-submit");
+  assert.equal(await p.evaluate("window.__snowyCheckoutRequests.at(-1).amountCents"), 299);
   assert.match(
     await p.evaluate('document.querySelector("#download-feedback").textContent'),
     /aren.t available|not available|unavailable|not connected|coming soon/i,
@@ -556,7 +556,7 @@ async function downloadCheck(p, run, mobile = false) {
   );
   assert.deepEqual(await p.evaluate("window.__snowyDownloads"), []);
 
-  await setAmount(p, "#download-amount", "0");
+  await p.click('#download-dialog [data-amount="0"]');
   await p.click("#download-submit");
   assert.deepEqual(
     await p.evaluate("window.__snowyDownloads"),

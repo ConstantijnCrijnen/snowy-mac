@@ -71,7 +71,7 @@ export function setupDownloadFlow({ onOpen = () => {}, onSupportOpen = () => {} 
   trigger.addEventListener("click", () => {
     if (dialog.open) return;
     onOpen();
-    amount.value = "0";
+    amount.value = amount.defaultValue;
     updateAmount();
     dialog.showModal();
     amount.focus({ preventScroll: true });
@@ -138,6 +138,8 @@ export function setupDownloadFlow({ onOpen = () => {}, onSupportOpen = () => {} 
   const reference = returned.searchParams.get('payment');
   if (reference || returned.searchParams.has('payment_cancelled')) {
     trigger.click();
+    amount.value = "0";
+    updateAmount();
     if (!reference) {
       message(feedback, 'Checkout cancelled. No problem — Snowy is still yours for $0.');
       history.replaceState(null, '', location.pathname + location.hash);
