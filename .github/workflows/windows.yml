@@ -1,0 +1,37 @@
+name: Windows checks
+
+on:
+  pull_request:
+    paths: ['windows/**', '.github/workflows/windows.yml']
+  push:
+    branches: [main, 'codex/windows-*']
+    paths: ['windows/**', '.github/workflows/windows.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: windows/global.json
+      - name: Test snow physics
+        run: dotnet run --configuration Release --project Snowy.Core.Tests
+      - name: Build portable previews and validate MSIX layout
+        run: ./installer/package.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Snowy-Windows-previews
+          path: build/windows/*/Snowy-Windows-*.zip
+          if-no-files-found: error

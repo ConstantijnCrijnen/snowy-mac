@@ -42,6 +42,10 @@ open build/Snowy.app
 
 The build script compiles the app and shaders, adds a local signature, and leaves the app in `build/`. It does not launch or install anything. If Xcode reports a missing Metal toolchain, install it from Xcode’s component settings first.
 
+## Windows development
+
+The separate Windows 11 app lives in [`windows/`](windows/README.md). It uses the Windows system tray, desktop window bounds, and bottom taskbar. The development build targets both x64 PCs and ARM64, including Windows 11 running in UTM.
+
 ## A desktop in your browser
 
 The [website](https://snowy.aauburn.com) has its own movable windows, a bottom Dock, and snow you can push around. There may also be someone thawing out for December. Downloads are pay what you want, including $0; optional support uses [Polar hosted checkout](website/docs/payments.md).

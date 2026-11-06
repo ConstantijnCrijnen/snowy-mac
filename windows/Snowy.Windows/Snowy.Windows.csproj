@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>Snowy</AssemblyName>
+    <RootNamespace>Snowy.Windows</RootNamespace>
+    <Version>0.1.0</Version>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/Snowy.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Snowy.Core/Snowy.Core.csproj" />
+    <Resource Include="Assets/*.jpg" />
+    <Resource Include="Assets/Snowy.ico" />
+    <Resource Include="Decorations/Assets/*.png;Decorations/Assets/catalog.json" />
+  </ItemGroup>
+</Project>

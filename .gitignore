@@ -16,6 +16,7 @@ website/.sites-checkout/
 website/.sites-runtime/
 website/.sites-checkout-*/
 *.p12
+*.pfx
 *.pem
 *.key
 

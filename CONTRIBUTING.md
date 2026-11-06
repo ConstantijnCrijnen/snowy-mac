@@ -7,6 +7,7 @@ Small, focused fixes are welcome. For a larger behavior change, open an issue fi
 - `Sources/SnowCore/` — geometry, snow profiles, granular material, collisions, and power policy.
 - `Sources/Snowy/` — the menu-bar app, window tracking, and Metal rendering.
 - `Tests/SnowCoreTests/` — deterministic geometry and physics regressions.
+- `windows/` — the Windows 11 tray app, its independent physics engine, and MSIX packaging.
 - `website/` — the browser desktop and its independent JavaScript snow engine.
 - `docs/architecture.md` and `DESIGN.md` — implementation limits and interaction decisions.
 
@@ -27,6 +28,8 @@ npm --prefix website run build
 ```
 
 The headless tests should remain independent of the live desktop. Add a regression for a meaningful physics failure, especially when moving supports, corners, material conservation, or storage exhaustion are involved. Don’t replace a physics failure with a looser assertion unless the intended behavior has changed.
+
+The [Windows build notes](windows/README.md) cover headless physics checks, portable previews, and signed installers.
 
 Optional browser checks use an isolated temporary Chrome/Chromium profile. Start the website's dev server, then run `npm --prefix website run test:browser`. Set `CHROME_BIN` if the executable is not in a standard location. This checks actual window gestures, weather settings, Dock alignment after mobile scrolling, storage reloads, Reduced Motion, and terminal input handling. It never accesses your existing browser profile or launches the Mac app.
 
