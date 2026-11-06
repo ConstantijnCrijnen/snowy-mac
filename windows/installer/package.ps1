@@ -126,11 +126,13 @@ try {
     }
 
     $bundle = Join-Path $root $bundleName
-    Invoke-Checked $makeAppx @("bundle", "/no", "/bv", $Version, "/d", $packages, "/p", $bundle)
-    if ($signArguments.Count) { Sign-Artifact $bundle }
+    $candidateDirectory = (New-Item -Type Directory (Join-Path $root "candidate")).FullName
+    $candidate = Join-Path $candidateDirectory $bundleName
+    Invoke-Checked $makeAppx @("bundle", "/no", "/bv", $Version, "/d", $packages, "/p", $candidate)
+    if ($signArguments.Count) { Sign-Artifact $candidate }
 
     if ($release -or $preview) {
-        $scanPaths += $bundle
+        $scanPaths += $candidate
         & (Join-Path $PSScriptRoot "scan-defender.ps1") -Path $scanPaths -UpdateSignatures:$UpdateDefenderSignatures
         if ($LASTEXITCODE -eq 2 -and $AllowDefenderUnavailable) {
             Write-Warning "Defender is unavailable. This preview has no Defender scan result."
@@ -138,6 +140,7 @@ try {
             throw "The Windows Defender gate failed (exit $LASTEXITCODE)."
         }
     }
+    Move-Item -LiteralPath $candidate -Destination $bundle
 
     if ($preview) {
         Export-Certificate -Cert $certificate -FilePath (Join-Path $root "Snowy-Preview.cer") | Out-Null

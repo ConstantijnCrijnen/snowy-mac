@@ -1,4 +1,4 @@
-<#!
+<#
 .SYNOPSIS
     Scans exact Windows Snowy release payload paths with Microsoft Defender Antivirus.
 .DESCRIPTION
@@ -44,7 +44,7 @@ function Get-DefenderStatus {
         AntivirusEnabled = [bool]$value.AntivirusEnabled
         SignatureVersion = [string]$value.AntivirusSignatureVersion
         SignatureLastUpdated = if ($value.AntivirusSignatureLastUpdated) { $value.AntivirusSignatureLastUpdated.ToString('o') } else { '' }
-        SignatureAgeDays = if ($null -ne $value.PSObject.Properties['AntivirusSignatureAge']) { [int]$value.AntivirusSignatureAge } else { $null }
+        SignatureAgeDays = if ($null -ne $value.PSObject.Properties['AntivirusSignatureAge'] -and $null -ne $value.AntivirusSignatureAge) { [long]$value.AntivirusSignatureAge } else { $null }
         Architecture = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
     }
 }
@@ -147,20 +147,13 @@ $mpCmdRun = Find-MpCmdRun
 if (-not $mpCmdRun) { Finish 3 'setup-error' 'Defender reports active, but a valid Microsoft-signed MpCmdRun.exe was not found.' $defender }
 
 if ($UpdateSignatures) {
-    $help = Invoke-MpCmdRun $mpCmdRun @('-h')
-    if ($help.ExitCode -ne 0 -or $help.Output -notmatch '(?i)-SignatureUpdate') {
-        Finish 1 'signature-update-unsupported' 'This MpCmdRun build does not advertise signature updates.' $defender
-    }
     $update = Invoke-MpCmdRun $mpCmdRun @('-SignatureUpdate')
     if ($update.ExitCode -ne 0) { Finish 1 'signature-update-failed' $update.Output $defender }
     try { $defender = Get-DefenderStatus }
     catch { Finish 1 'signature-update-unverified' 'Could not verify Defender status after the requested update.' }
-    if (-not $defender.SignatureVersion) { Finish 1 'signature-update-unverified' 'Defender reported no signature version after update.' $defender }
-    if ($null -ne $defender.SignatureAgeDays -and $defender.SignatureAgeDays -gt 7) {
-        Finish 1 'signature-update-stale' "Signatures remain $($defender.SignatureAgeDays) days old after update." $defender
-    }
 }
-elseif ($null -ne $defender.SignatureAgeDays -and $defender.SignatureAgeDays -gt 7) {
+if (-not $defender.SignatureVersion) { Finish 1 'signatures-unverified' 'Defender reported no signature version.' $defender }
+if ($null -ne $defender.SignatureAgeDays -and $defender.SignatureAgeDays -gt 7) {
     Finish 1 'stale-signatures' "Defender signatures are $($defender.SignatureAgeDays) days old. Rerun with -UpdateSignatures." $defender
 }
 
