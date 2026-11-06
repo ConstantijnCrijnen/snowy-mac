@@ -27,22 +27,25 @@ Copy the whole output folder to Windows and run `Snowy.exe` there. For Windows 1
 
 ## Try the installer in a Windows VM
 
-Download `Snowy-Windows-preview.msixbundle`, `Snowy-Preview.cer`, and the `.sha256` file from the Windows checks run for the branch. The files are available directly as Actions artifacts. Copy them into a disposable Windows 11 VM. One bundle contains both ARM64 and x64. Compare the bundle's SHA-256 with the checksum and the certificate thumbprint with the one printed in the GitHub Actions log.
+For UTM on Apple Silicon, download `Snowy-Windows-arm64-preview.msix`, its `.sha256` file, and `Snowy-Preview.cer` from the same Windows checks run. For x64, use `Snowy-Windows-preview.msixbundle` and its matching checksum. Copy the files to the Windows guest's local Downloads folder on `C:`. UTM's shared folder is a network drive. Use it to transfer the files, then open the installer from the local copy.
 
 The VM preview has a temporary self-signed certificate and its own package identity. In the VM only, open PowerShell as administrator and trust that exact certificate in **Trusted People**.
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\Snowy-Windows-preview.msixbundle
+$installer = '.\Snowy-Windows-arm64-preview.msix'
+Get-FileHash -Algorithm SHA256 $installer
 Get-FileHash -Algorithm SHA1 .\Snowy-Preview.cer
 ```
 
-Once both values match, import the certificate.
+Compare the package hash with its `.sha256` file and the certificate hash with the thumbprint printed in the matching CI log. Once both values match, import the certificate.
 
 ```powershell
 Import-Certificate -FilePath .\Snowy-Preview.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
 ```
 
-Double-click the bundle and choose **Install**. App Installer shows Snowy's icon and winter-blue styling where custom installer themes are supported. The package manages its own uninstall in **Settings → Apps → Installed apps**. The preview certificate expires after 30 days and is for this VM only. Smart App Control on the VM may still require a publicly trusted build. [Microsoft's MSIX signing guide](https://learn.microsoft.com/en-us/windows/msix/package/sign-msix-package-guide)
+Double-click the package and choose **Install**. The standalone ARM64 file uses the standard App Installer screen with Snowy's icon. The combined bundle includes the custom winter-blue theme. The package manages its own uninstall in **Settings → Apps → Installed apps**. The preview certificate expires after 30 days and is for this VM only. Smart App Control on the VM may still require a publicly trusted build. [Microsoft's MSIX signing guide](https://learn.microsoft.com/en-us/windows/msix/package/sign-msix-package-guide)
+
+If App Installer still says it cannot open the package, open **Windows PowerShell** in the same local folder and run `Add-AppxPackage -Path (Resolve-Path -LiteralPath '.\Snowy-Windows-arm64-preview.msix').Path`. If deployment fails, keep the `0x…` error code and Activity ID. [Microsoft's App Installer troubleshooting guide](https://learn.microsoft.com/en-us/windows/msix/app-installer/troubleshoot-appinstaller-issues)
 
 ## Distribution and updates
 

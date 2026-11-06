@@ -60,3 +60,49 @@ jobs:
           path: build/windows/*/Snowy-Windows-preview.msixbundle.sha256
           archive: false
           if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: build/windows/*/Snowy-Windows-arm64-preview.msix
+          archive: false
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: build/windows/*/Snowy-Windows-arm64-preview.msix.sha256
+          archive: false
+          if-no-files-found: error
+
+  install-arm64:
+    runs-on: windows-11-arm
+    needs: build
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: Snowy-*
+          path: ${{ runner.temp }}/snowy-install-check
+          merge-multiple: true
+      - name: Install and verify both preview packages on Windows 11 ARM64
+        shell: powershell
+        working-directory: ${{ runner.temp }}/snowy-install-check
+        run: |
+          $identity = 'ArchieAuburn.Snowy.Preview'
+          $certificate = Import-Certificate -FilePath .\Snowy-Preview.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+          try {
+            foreach ($name in @('Snowy-Windows-arm64-preview.msix', 'Snowy-Windows-preview.msixbundle')) {
+              $path = (Resolve-Path -LiteralPath $name).Path
+              $expected = ((Get-Content -LiteralPath "$name.sha256" -Raw) -split '\s+')[0]
+              if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $expected) { throw "Checksum mismatch for $name." }
+              try {
+                Add-AppxPackage -Path $path -ErrorAction Stop
+                $package = Get-AppxPackage -Name $identity
+                if (-not $package -or $package.Architecture -ne 'Arm64') {
+                  throw "Windows did not register the ARM64 payload from $name."
+                }
+                Write-Host "Installed $name as $($package.PackageFullName)"
+              } finally {
+                Get-AppxPackage -Name $identity | ForEach-Object { Remove-AppxPackage -Package $_.PackageFullName }
+              }
+            }
+          } finally {
+            Remove-Item -LiteralPath "Cert:\LocalMachine\TrustedPeople\$($certificate.Thumbprint)"
+          }

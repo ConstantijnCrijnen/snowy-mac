@@ -1,6 +1,6 @@
 param(
     [ValidatePattern('^\d{1,5}\.\d{1,5}\.\d{1,5}\.\d{1,5}$')]
-    [string] $Version = "0.1.1.0",
+    [string] $Version = "0.1.2.0",
     [ValidatePattern('^([0-9A-Fa-f]{40})?$')]
     [string] $CertificateThumbprint = "",
     [ValidatePattern('^([0-9A-Fa-f]{40})?$')]
@@ -86,6 +86,8 @@ function Sign-Artifact([string] $Path) {
 $root = Join-Path $PSScriptRoot "../../build/windows/$Version-$([Guid]::NewGuid().ToString('N'))"
 $root = (New-Item -Type Directory $root -Force).FullName
 $packages = (New-Item -Type Directory (Join-Path $root "packages")).FullName
+$candidateDirectory = (New-Item -Type Directory (Join-Path $root "candidate")).FullName
+$armPreview = Join-Path $candidateDirectory "Snowy-Windows-arm64-preview.msix"
 $scanPaths = @()
 Push-Location (Join-Path $PSScriptRoot "..")
 try {
@@ -102,7 +104,6 @@ try {
 
         $assets = (New-Item -Type Directory (Join-Path $staging "PackageAssets")).FullName
         Copy-Item (Join-Path $PSScriptRoot "Snowy*.png") $assets
-        Copy-Item -LiteralPath (Join-Path $PSScriptRoot "Msix.AppInstaller.Data") -Destination $staging -Recurse
         [xml]$manifest = Get-Content -Raw (Join-Path $PSScriptRoot "AppxManifest.xml")
         $manifest.Package.Identity.Name = $packageName
         $manifest.Package.Identity.Publisher = $Publisher
@@ -113,6 +114,13 @@ try {
             $manifest.Package.Applications.Application.VisualElements.DisplayName = "Snowy Preview"
         }
         $manifest.Save((Join-Path $staging "AppxManifest.xml"))
+        if ($preview -and $architecture -eq "arm64") {
+            # Use the standard App Installer screen for the standalone VM preview.
+            Invoke-Checked $makeAppx @("pack", "/no", "/d", $staging, "/p", $armPreview)
+            Sign-Artifact $armPreview
+            $scanPaths += $armPreview
+        }
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot "Msix.AppInstaller.Data") -Destination $staging -Recurse
         $package = Join-Path $packages "Snowy-$architecture.msix"
         Invoke-Checked $makeAppx @("pack", "/no", "/d", $staging, "/p", $package)
         $archive = [IO.Compression.ZipFile]::OpenRead($package)
@@ -125,8 +133,6 @@ try {
         $scanPaths += $staging
     }
 
-    $bundle = Join-Path $root $bundleName
-    $candidateDirectory = (New-Item -Type Directory (Join-Path $root "candidate")).FullName
     $candidate = Join-Path $candidateDirectory $bundleName
     Invoke-Checked $makeAppx @("bundle", "/no", "/bv", $Version, "/d", $packages, "/p", $candidate)
     if ($signArguments.Count) { Sign-Artifact $candidate }
@@ -140,7 +146,14 @@ try {
             throw "The Windows Defender gate failed (exit $LASTEXITCODE)."
         }
     }
-    Move-Item -LiteralPath $candidate -Destination $bundle
+    $installers = if ($preview) { @($candidate, $armPreview) } else { @($candidate) }
+    foreach ($installer in $installers) {
+        $name = Split-Path -Leaf $installer
+        $final = Join-Path $root $name
+        Move-Item -LiteralPath $installer -Destination $final
+        $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $final).Hash.ToLowerInvariant()
+        "$hash  $name" | Set-Content -Encoding ascii "$final.sha256"
+    }
 
     if ($preview) {
         Export-Certificate -Cert $certificate -FilePath (Join-Path $root "Snowy-Preview.cer") | Out-Null
@@ -157,8 +170,6 @@ try {
 </AppInstaller>
 "@ | Set-Content -Encoding utf8 (Join-Path $root "Snowy.appinstaller")
     }
-    $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $bundle).Hash.ToLowerInvariant()
-    "$hash  $bundleName" | Set-Content -Encoding ascii "$bundle.sha256"
     Write-Host "Windows artifacts: $root"
 }
 finally { Pop-Location }
