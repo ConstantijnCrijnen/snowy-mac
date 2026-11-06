@@ -18,3 +18,6 @@ website/.sites-checkout-*/
 *.p12
 *.pem
 *.key
+
+windows/**/bin/
+windows/**/obj/
