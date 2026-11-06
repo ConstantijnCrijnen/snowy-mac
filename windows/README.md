@@ -33,7 +33,12 @@ The VM preview has a temporary self-signed certificate and its own package ident
 
 ```powershell
 Get-FileHash -Algorithm SHA256 .\Snowy-Windows-preview.msixbundle
-Get-PfxCertificate -FilePath .\Snowy-Preview.cer | Format-List Subject,Thumbprint,NotAfter
+Get-FileHash -Algorithm SHA1 .\Snowy-Preview.cer
+```
+
+Once both values match, import the certificate.
+
+```powershell
 Import-Certificate -FilePath .\Snowy-Preview.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
 ```
 
