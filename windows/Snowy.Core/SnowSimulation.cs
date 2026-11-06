@@ -108,7 +108,7 @@ public sealed class SnowSimulation
             if (!oldById.TryGetValue(changedBody.Id, out var oldBody) || oldBody == changedBody) continue;
             var movingSurface = nextSurfaces.First(surface => surface.Body?.Id == changedBody.Id);
             TransferOverlappedCap(movingSurface, changedBody, nextSurfaces);
-            PushSnowInBody(movingSurface, changedBody, nextSurfaces);
+            PushSnowInBody(movingSurface, oldBody, changedBody, nextSurfaces);
         }
 
         // Closing a support releases its cap to gravity. A tiny bounded parcel queue keeps
@@ -312,9 +312,9 @@ public sealed class SnowSimulation
         return first;
     }
 
-    private (float Time, Body Body)? FirstBodyHit(Vector2 start, Vector2 end, float radius)
+    private (float Time, Body Body, Vector2 Normal)? FirstBodyHit(Vector2 start, Vector2 end, float radius)
     {
-        (float Time, Body Body)? first = null;
+        (float Time, Body Body, Vector2 Normal)? first = null;
         foreach (var body in _bodies)
         {
             if (MathF.Max(start.X, end.X) + radius < body.Left ||
@@ -328,7 +328,8 @@ public sealed class SnowSimulation
                 var t = sample / (float)subdivisions;
                 var point = Vector2.Lerp(start, end, t);
                 if (!body.Contains(point, radius)) continue;
-                if (first is null || t < first.Value.Time) first = (t, body);
+                if (first is null || t < first.Value.Time)
+                    first = (t, body, EntryNormal(start, end, point, body));
                 break;
             }
         }
@@ -347,8 +348,8 @@ public sealed class SnowSimulation
                 var local = i * surface.Spacing;
                 var x = (surface.Body?.Left ?? 0) + local;
                 var baseY = surface.BaseY(local);
-                var exposed = true;
-                var sky = true;
+                var exposed = x >= 0 && x <= Width && baseY >= 0 && baseY <= Height;
+                var sky = exposed;
                 var suppression = 1f;
                 var boost = 0f;
                 var capacityBoost = 0f;
@@ -419,10 +420,10 @@ public sealed class SnowSimulation
                 var verticalReach = MathF.Sqrt(radius * radius - horizontal * horizontal);
                 var overlap = MathF.Max(0, MathF.Min(baseY, closest.Y + verticalReach) - MathF.Max(baseY - height, closest.Y - verticalReach));
                 var removed = hard && overlap > 0 ? height : MathF.Min(height, overlap * strength);
-                if (removed <= Epsilon || _parcels.Count >= MaximumParcels) continue;
+                if (removed <= Epsilon) continue;
                 var direction = travel > 0.5f ? Vector2.Normalize(delta) : new Vector2(point.X < end.X ? -1 : 1, -0.15f);
                 var target = new Vector2(end.X + direction.X * (radius + 4), MathF.Min(point.Y, end.Y + direction.Y * (radius + 4)));
-                _parcels.Add(new Parcel(target, removed * surface.Spacing, removed, direction * (hard ? 125 : 55)));
+                AddParcel(new Parcel(target, removed * surface.Spacing, removed, direction * (hard ? 125 : 55)));
                 surface.Heights[i] -= removed;
             }
         }
@@ -447,9 +448,19 @@ public sealed class SnowSimulation
             else if (obstruction is { } blocked)
             {
                 var body = blocked.Body;
-                var direction = velocity.X < 0 ? -1 : 1;
-                var y = MathF.Max(body.Top - parcel.Height, MathF.Min(end.Y, body.Bottom + parcel.Height));
-                _parcels[i] = parcel with { Position = new Vector2(body.Left - parcel.Height, y), Velocity = new Vector2(direction * MathF.Abs(velocity.X) * 0.5f, MathF.Max(velocity.Y, 80)) };
+                var normal = blocked.Normal;
+                var padding = MathF.Max(parcel.Height * 0.5f, 2) + 0.25f;
+                var position = normal.X < 0
+                    ? new Vector2(body.Left - padding, end.Y)
+                    : normal.X > 0
+                        ? new Vector2(body.Right + padding, end.Y)
+                        : normal.Y < 0
+                            ? new Vector2(end.X, body.Top - padding)
+                            : new Vector2(end.X, body.Bottom + padding);
+                var velocityAfterHit = new Vector2(
+                    normal.X == 0 ? velocity.X : normal.X * MathF.Max(24, MathF.Abs(velocity.X) * 0.5f),
+                    normal.Y == 0 ? MathF.Max(velocity.Y, 50) : normal.Y * MathF.Max(24, MathF.Abs(velocity.Y) * 0.5f));
+                _parcels[i] = parcel with { Position = position, Velocity = velocityAfterHit };
             }
             else if (end.Y > Height + 4)
             {
@@ -493,6 +504,7 @@ public sealed class SnowSimulation
                 var receiveLocal = x - receiverLeft;
                 if (receiveLocal < 0 || receiveLocal > receiver.Width) continue;
                 var receiveY = receiver.BaseY(receiveLocal);
+                if (receiveY < baseY - height || receiveY >= baseY) continue;
                 var overlap = MathF.Max(0, MathF.Min(height, baseY - receiveY));
                 if (overlap <= 0) continue;
                 var transferredMass = overlap * moved.Spacing;
@@ -503,8 +515,10 @@ public sealed class SnowSimulation
         }
     }
 
-    private void PushSnowInBody(SurfaceState moved, Body newBody, List<SurfaceState> surfaces)
+    private void PushSnowInBody(SurfaceState moved, Body oldBody, Body newBody, List<SurfaceState> surfaces)
     {
+        var direction = LeadingFaceDirection(oldBody, newBody);
+        const float padding = 4f;
         foreach (var surface in surfaces)
         {
             if (surface == moved) continue;
@@ -517,8 +531,15 @@ public sealed class SnowSimulation
                 var point = new Vector2(left + local, surface.BaseY(local) - height * 0.5f);
                 if (!newBody.Contains(point)) continue;
                 var removed = MathF.Min(height, 3f);
-                if (_parcels.Count < MaximumParcels)
-                    _parcels.Add(new Parcel(new Vector2(newBody.Left - 2, point.Y), removed * surface.Spacing, removed, new Vector2(-MathF.Abs(_wind.X) * 45, 90)));
+                var target = direction.X < 0
+                    ? new Vector2(newBody.Left - padding, point.Y)
+                    : direction.X > 0
+                        ? new Vector2(newBody.Right + padding, point.Y)
+                        : direction.Y < 0
+                            ? new Vector2(point.X, newBody.Top - padding)
+                            : new Vector2(point.X, newBody.Bottom + padding);
+                AddParcel(new Parcel(target, removed * surface.Spacing, removed,
+                    direction * 45 + new Vector2(_wind.X * 10, 60)));
                 surface.Heights[i] -= removed;
             }
         }
@@ -530,10 +551,80 @@ public sealed class SnowSimulation
         for (var i = 0; i < surface.Heights.Length; i++)
         {
             var height = surface.Heights[i];
-            if (height <= Epsilon || _parcels.Count >= MaximumParcels) continue;
+            if (height <= Epsilon) continue;
             var local = i * surface.Spacing;
-            _parcels.Add(new Parcel(new Vector2(left + local, surface.BaseY(local) - height * 0.5f), height * surface.Spacing, height, new Vector2(_wind.X * 12, 0)));
+            AddParcel(new Parcel(new Vector2(left + local, surface.BaseY(local) - height * 0.5f), height * surface.Spacing, height, new Vector2(_wind.X * 12, 0)));
         }
+    }
+
+    private static Vector2 LeadingFaceDirection(Body oldBody, Body newBody)
+    {
+        var dx = newBody.Left - oldBody.Left;
+        var dy = newBody.Top - oldBody.Top;
+        if (MathF.Abs(dx) > 0.01f || MathF.Abs(dy) > 0.01f)
+            return MathF.Abs(dx) >= MathF.Abs(dy)
+                ? new Vector2(MathF.Sign(dx), 0)
+                : new Vector2(0, MathF.Sign(dy));
+
+        var expansion = new[]
+        {
+            oldBody.Left - newBody.Left,
+            newBody.Right - oldBody.Right,
+            oldBody.Top - newBody.Top,
+            newBody.Bottom - oldBody.Bottom
+        };
+        var face = Array.IndexOf(expansion, expansion.Max());
+        return face switch
+        {
+            0 => new Vector2(-1, 0),
+            1 => new Vector2(1, 0),
+            2 => new Vector2(0, -1),
+            3 => new Vector2(0, 1),
+            _ => Vector2.UnitX
+        };
+    }
+
+    private static Vector2 EntryNormal(Vector2 start, Vector2 end, Vector2 contact, Body body)
+    {
+        if (start.X <= body.Left) return new Vector2(-1, 0);
+        if (start.X >= body.Right) return Vector2.UnitX;
+        if (start.Y <= body.Top) return new Vector2(0, -1);
+        if (start.Y >= body.Bottom) return Vector2.UnitY;
+        var motion = end - start;
+        if (MathF.Abs(motion.X) > MathF.Abs(motion.Y))
+            return new Vector2(start.X < (body.Left + body.Right) * 0.5f ? -1 : 1, 0);
+        return new Vector2(0, start.Y < (body.Top + body.Bottom) * 0.5f ? -1 : 1);
+    }
+
+    private void AddParcel(Parcel parcel)
+    {
+        if (!float.IsFinite(parcel.Mass) || parcel.Mass <= 0 || !IsFinite(parcel.Position) || !IsFinite(parcel.Velocity)) return;
+        if (_parcels.Count < MaximumParcels)
+        {
+            _parcels.Add(parcel);
+            return;
+        }
+
+        var nearest = 0;
+        var nearestDistance = float.PositiveInfinity;
+        for (var i = 0; i < _parcels.Count; i++)
+        {
+            var distance = Vector2.DistanceSquared(_parcels[i].Position, parcel.Position);
+            if (distance >= nearestDistance) continue;
+            nearest = i;
+            nearestDistance = distance;
+        }
+
+        var existing = _parcels[nearest];
+        var totalMass = existing.Mass + parcel.Mass;
+        var incomingShare = parcel.Mass / totalMass;
+        _parcels[nearest] = existing with
+        {
+            Position = Vector2.Lerp(existing.Position, parcel.Position, incomingShare),
+            Mass = totalMass,
+            Height = MathF.Max(existing.Height, parcel.Height),
+            Velocity = Vector2.Lerp(existing.Velocity, parcel.Velocity, incomingShare)
+        };
     }
 
     private void BuildLoosePatches()

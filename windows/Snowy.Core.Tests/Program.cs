@@ -9,6 +9,7 @@ var cases = new (string Name, Action Run)[]
     ("wind shadow blocks snowfall but shovel placement remains available", WindShadowDoesNotBlockSweeping),
     ("decorations accept falling snow as physical surfaces", DecorationsCatchSnow),
     ("snow from a closed support falls onto the lower exposed window", ClosedSupportSnowFallsDown),
+    ("moving windows push covered snow toward either leading side", MovingWindowPushesBothWays),
     ("the snow cap continues falling after a surface reaches its limit", SnowfallContinuesAtCapacity),
 };
 
@@ -112,6 +113,33 @@ static void ClosedSupportSnowFallsDown()
     Check(snow.TotalLooseMass > carriedMass * 0.99f, "Closing the support should release its snow into gravity.");
     Advance(snow, 160);
     Check(Profile(snow, 2).Heights.Max() > 1, "Released snow should settle on the newly exposed lower window.");
+}
+
+static void MovingWindowPushesBothWays()
+{
+    AssertLeadingPush(700, 100, expectRight: false);
+    AssertLeadingPush(-180, 340, expectRight: true);
+}
+
+static void AssertLeadingPush(float startingX, float targetX, bool expectRight)
+{
+    var snow = new SnowSimulation(600, 500);
+    var support = new Body(1, new Vector2(0, 300), new Vector2(600, 180));
+    snow.SetBodies(new[] { support });
+    Advance(snow, 900);
+    Check(Profile(snow, 1).Heights.Max() > 1, "The stationary support should hold snow before the window arrives.");
+
+    var oldWindow = new Body(2, new Vector2(startingX, 240), new Vector2(120, 120));
+    var movedWindow = oldWindow with { Position = new Vector2(targetX, 240) };
+    snow.SetBodies(new[] { support, oldWindow });
+    snow.SetBodies(new[] { support, movedWindow });
+    Check(snow.TotalLooseMass > 0, "The moving window should dislodge snow it sweeps through.");
+    if (expectRight)
+        Check(snow.LoosePatches.Any(patch => patch.Position.X > targetX + movedWindow.Size.X),
+            "Rightward motion should push snow beyond the right boundary.");
+    else
+        Check(snow.LoosePatches.Any(patch => patch.Position.X < targetX),
+            "Leftward motion should push snow beyond the left boundary.");
 }
 
 static void SnowfallContinuesAtCapacity()
