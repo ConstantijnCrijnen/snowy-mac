@@ -1,5 +1,5 @@
 import { Webhook } from 'standardwebhooks';
-import { DOWNLOAD_URL, MAX_AMOUNT_CENTS } from '../src/payments.js';
+import { DOWNLOADS, DOWNLOAD_URL, MAX_AMOUNT_CENTS } from '../src/payments.js';
 export const ORIGIN = 'https://snowy.aauburn.com';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export function json(data, status = 200) {
@@ -8,7 +8,8 @@ export function json(data, status = 200) {
 export function validateCheckout(value) {
   return value && Object.keys(value).every(k => ['amountCents', 'context', 'requestId'].includes(k)) &&
     Number.isSafeInteger(value.amountCents) && value.amountCents >= 0 && value.amountCents <= MAX_AMOUNT_CENTS &&
-    ['download', 'support'].includes(value.context) && UUID.test(value.requestId);
+    typeof value.context === 'string' && (value.context === 'support' || Object.hasOwn(DOWNLOADS, value.context)) &&
+    typeof value.requestId === 'string' && UUID.test(value.requestId);
 }
 async function body(request, max) {
   if (Number(request.headers.get('content-length')) > max) throw Error('size');
@@ -54,7 +55,7 @@ export default {
         if (!await limit(request,env,'checkout',15)) return json({error:'Please wait a minute before trying again.'},429);
         let value; try { value = JSON.parse(await body(request,1024)); } catch { return json({error:'Invalid request.'},400); }
         if (!validateCheckout(value)) return json({error:'Choose a valid amount from $0 to $1,000.'},422);
-        if (value.amountCents === 0) return json({url:DOWNLOAD_URL,free:true});
+        if (value.amountCents === 0) return json({url:DOWNLOADS[value.context] ?? DOWNLOAD_URL,free:true});
         return state(env,`checkout:${value.requestId}`).fetch(new Request('https://internal/create',{method:'POST',body:JSON.stringify(value)}));
       }
       if (url.pathname === '/api/payment') {
@@ -118,10 +119,11 @@ export class PaymentState {
       await storage.put('checkout',{amountCents:value.amountCents,context:value.context});
       await storage.setAlarm(Date.now()+86400000);
       try {
+        const build = value.context.startsWith('windows-') ? `&build=${value.context}` : '';
         const checkout = await polar(this.env,'checkouts/',{method:'POST',body:JSON.stringify({
           products:[this.env.POLAR_PRODUCT_ID],amount:value.amountCents,
-          success_url:`${ORIGIN}/?payment=${value.requestId}`,
-          return_url:`${ORIGIN}/?payment_cancelled=1`,
+          success_url:`${ORIGIN}/?payment=${value.requestId}${build}`,
+          return_url:`${ORIGIN}/?payment_cancelled=1${build}`,
           metadata:{snowy_context:value.context},allow_discount_codes:false,
         })});
         if (!checkoutURL(checkout.url) || !checkout.id) throw Error('provider url');

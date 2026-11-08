@@ -73,6 +73,7 @@ try {
   for (let run = 1; run <= runs; run++) {
     await desktopCheck(run);
     await mobileCheck(run);
+    await windowsCheckoutReturnCheck();
     results.push({
       run,
       desktop: "passed",
@@ -155,7 +156,7 @@ async function connect(address) {
   };
 }
 
-async function page(width, height, mobile = false) {
+async function page(width, height, mobile = false, path = "") {
   const { browserContextId } = await client.send("Target.createBrowserContext");
   const { targetId } = await client.send("Target.createTarget", {
     url: "about:blank",
@@ -202,7 +203,7 @@ async function page(width, height, mobile = false) {
       enabled: true,
       maxTouchPoints: 1,
     });
-  await send("Page.navigate", { url: baseURL });
+  await send("Page.navigate", { url: new URL(path, baseURL).href });
   await wait(
     '!!window.SnowyDesktop?.engine && document.readyState === "complete"',
   );
@@ -496,7 +497,7 @@ async function downloadCheck(p, run, mobile = false) {
     };
     const click = HTMLAnchorElement.prototype.click;
     HTMLAnchorElement.prototype.click = function () {
-      if (this.href.includes("/releases/") && this.href.endsWith(".dmg")) {
+      if (this.href.includes("/releases/") && [".dmg", ".exe"].some(extension => this.href.endsWith(extension))) {
         window.__snowyDownloads.push(this.href);
         return;
       }
@@ -506,21 +507,39 @@ async function downloadCheck(p, run, mobile = false) {
   })()`);
   const windowsBefore = await p.evaluate("SnowyDesktop.visibleWindowIDs");
   await p.click("#windows-download");
-  assert.ok(await p.evaluate('document.querySelector("#windows-download-dialog").open'));
-  assert.ok(await p.evaluate('document.querySelector("#windows-download-dialog").contains(document.activeElement)'));
+  assert.ok(await p.evaluate('document.querySelector("#download-dialog").open && !document.querySelector("#windows-download-options").hidden'));
+  assert.equal(await p.evaluate('document.activeElement?.id'), "download-amount");
+  assert.equal(await p.evaluate('document.querySelector("#download-amount").value'), "2.99");
   assert.deepEqual(
-    await p.evaluate('[...document.querySelectorAll(".windows-installers a")].map(link => link.href.split("/").at(-1))'),
-    ["Snowy-Setup-x64.exe", "Snowy-Setup-arm64.exe"],
+    await p.evaluate('[...document.querySelectorAll("#windows-download-options button[data-build]")].map(button => button.dataset.build)'),
+    ["windows-x64", "windows-arm64"],
   );
+  await p.key("Enter", "Enter", 13);
+  assert.equal(await p.evaluate("document.activeElement?.dataset.build"), "windows-x64");
+  assert.equal(await p.evaluate("window.__snowyCheckoutRequests.length"), 0);
+  await p.click('[data-build="windows-x64"]');
+  assert.equal(await p.evaluate("window.__snowyCheckoutRequests.at(-1).context"), "windows-x64");
+  assert.equal(await p.evaluate("window.__snowyCheckoutRequests.at(-1).amountCents"), 299);
+  await p.click("#download-free");
+  await p.click('#download-dialog [data-amount="0"]');
+  await p.click('[data-build="windows-arm64"]');
+  assert.equal(await p.evaluate("window.__snowyCheckoutRequests.length"), 1);
+  assert.deepEqual(
+    await p.evaluate('window.__snowyDownloads.map(url => url.split("/").at(-1))'),
+    ["Snowy-Setup-x64.exe", "Snowy-Setup-arm64.exe"],
+    "The free fallback keeps its build and $0 starts the selected installer without checkout",
+  );
+  if (run === 1) await p.screenshot(mobile ? "mobile-windows-download" : "desktop-windows-download");
+  await p.evaluate("window.__snowyDownloads = []; window.__snowyCheckoutRequests = [];");
   await p.key("Escape", "Escape", 27);
   assert.equal(await p.evaluate("document.activeElement?.id"), "windows-download");
   await p.evaluate('location.hash = "download-windows"');
-  await p.wait('document.querySelector("#windows-download-dialog").open');
+  await p.wait('document.querySelector("#download-dialog").open && !document.querySelector("#windows-download-options").hidden');
   await p.key("Escape", "Escape", 27);
   await p.evaluate('history.replaceState(null, "", location.pathname)');
   assert.deepEqual(await p.evaluate("SnowyDesktop.visibleWindowIDs"), windowsBefore);
   await p.click("#download");
-  assert.ok(await p.evaluate('document.querySelector("#download-dialog").open'));
+  assert.ok(await p.evaluate('document.querySelector("#download-dialog").open && document.querySelector("#windows-download-options").hidden'));
   assert.equal(
     await p.evaluate('document.querySelector("#download-amount").value'),
     "2.99",
@@ -676,6 +695,18 @@ async function mobileCheck(run) {
         e.sessionId === p.sessionId && e.method === "Runtime.exceptionThrown",
     );
     assert.deepEqual(errors, [], "No phone runtime exceptions");
+  } finally {
+    await p.close();
+  }
+}
+
+async function windowsCheckoutReturnCheck() {
+  const p = await page(390, 844, true, "?payment_cancelled=1&build=windows-arm64");
+  try {
+    assert.ok(await p.evaluate('document.querySelector("#download-dialog").open && !document.querySelector("#windows-download-options").hidden'));
+    assert.equal(await p.evaluate('document.querySelector("#download-amount").value'), "0");
+    assert.match(await p.evaluate('document.querySelector("#download-feedback").textContent'), /checkout cancelled/i);
+    assert.equal(await p.evaluate("location.href"), baseURL);
   } finally {
     await p.close();
   }

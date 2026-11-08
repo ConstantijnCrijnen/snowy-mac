@@ -74,7 +74,6 @@ const toastElement = document.querySelector("#toast");
 const cursorElement = document.querySelector("#cursor-tool");
 const downloadDialog = document.querySelector("#download-dialog");
 const betaDialog = document.querySelector("#beta-dialog");
-const windowsDialog = document.querySelector("#windows-download-dialog");
 const windPad = document.querySelector("#wind-pad");
 const windArrow = document.querySelector("#wind-arrow");
 const terminalInput = document.querySelector("#terminal-input");
@@ -493,7 +492,7 @@ document.addEventListener("click", (event) => {
 document.addEventListener(
   "pointermove",
   (event) => {
-    if (downloadDialog.open || betaDialog.open || windowsDialog.open) return;
+    if (downloadDialog.open || betaDialog.open) return;
     if (gesture?.pointerID === event.pointerId) {
       if (gesture.kind === "wind") windFromPointer(event);
       else {
@@ -830,7 +829,7 @@ document.querySelector("#terminal-form").addEventListener("submit", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (downloadDialog.open || betaDialog.open || windowsDialog.open) return;
+  if (downloadDialog.open || betaDialog.open) return;
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();
     openWindow("terminal");
@@ -982,23 +981,6 @@ setupDownloadFlow({
     openWindow("letter");
   },
 });
-const windowsDownload = document.querySelector("#windows-download");
-function openWindowsDownload() {
-  if (windowsDialog.open || downloadDialog.open || betaDialog.open) return;
-  resetDownloadPointer();
-  windowsDialog.showModal();
-}
-function openLinkedDownload() {
-  if (location.hash === "#download-windows") openWindowsDownload();
-}
-windowsDownload.addEventListener("click", (event) => {
-  if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-  event.preventDefault();
-  openWindowsDownload();
-});
-windowsDialog.addEventListener("close", () => windowsDownload.focus({ preventScroll: true }));
-window.addEventListener("hashchange", openLinkedDownload);
-openLinkedDownload();
 Object.defineProperty(window, "SnowyDesktop", {
   value: Object.freeze({
     get engine() {

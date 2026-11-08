@@ -40,7 +40,7 @@ cd windows
 
 When a newer desktop beta is available, **Update** appears in the snowflake menu and opens the download chooser. Download the installer, choose **Quit Snowy** from the tray, and run the new setup. Your settings and scenes carry over.
 
-For future beta releases, build and scan both EXEs with **Windows desktop setup**, publish the installers and their checksums under `windows-v<four-part-version>` as a prerelease, then update the download links in `website/index.html` and the version in `website/windows/update.json` together. The feed only announces a newer version after both installers are available.
+For future beta releases, build and scan both EXEs with **Windows desktop setup**, publish the installers and their checksums under `windows-v<four-part-version>` as a prerelease, then update the release link in `website/index.html`, the installer URLs in `website/src/payments.js`, and the version in `website/windows/update.json` together. The feed only announces a newer version after both installers are available.
 
 ## Test the MSIX package
 

@@ -1,5 +1,10 @@
 export const DOWNLOAD_URL =
   "https://github.com/soloiaros/snowy-mac/releases/latest/download/Snowy-macOS-arm64.dmg";
+export const DOWNLOADS = Object.freeze({
+  download: DOWNLOAD_URL,
+  "windows-x64": "https://github.com/soloiaros/snowy-mac/releases/download/windows-v0.1.4.0/Snowy-Setup-x64.exe",
+  "windows-arm64": "https://github.com/soloiaros/snowy-mac/releases/download/windows-v0.1.4.0/Snowy-Setup-arm64.exe",
+});
 export const MAX_AMOUNT_CENTS = 100_000;
 
 
@@ -29,14 +34,15 @@ export function parseAmount(raw) {
 
 // Local intent only. The server validates all amounts again before checkout.
 export function createPaymentIntent(raw, context = "download") {
-  if (context !== "download" && context !== "support") {
+  const isDownload = typeof context === "string" && Object.hasOwn(DOWNLOADS, context);
+  if (!isDownload && context !== "support") {
     return { ok: false, error: "Choose whether to download or support Snowy." };
   }
   const amount = parseAmount(raw);
   if (!amount.ok) return amount;
   if (amount.cents === 0) {
-    return context === "download"
-      ? { ok: true, kind: "download", url: DOWNLOAD_URL }
+    return isDownload
+      ? { ok: true, kind: "download", url: DOWNLOADS[context] }
       : { ok: true, kind: "no-contribution" };
   }
   return {

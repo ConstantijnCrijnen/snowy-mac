@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DOWNLOAD_URL,
+  DOWNLOADS,
   MAX_AMOUNT_CENTS,
   parseAmount,
   createPaymentIntent,
@@ -61,8 +62,22 @@ test("a support-only zero amount does not unexpectedly start a download", () => 
   });
 });
 
+test("zero-dollar Windows downloads use the pinned installer for the chosen architecture", () => {
+  for (const architecture of ["x64", "arm64"]) {
+    const context = `windows-${architecture}`;
+    const url = new URL(DOWNLOADS[context]);
+    assert.equal(url.origin, "https://github.com");
+    assert.equal(url.pathname, `/soloiaros/snowy-mac/releases/download/windows-v0.1.4.0/Snowy-Setup-${architecture}.exe`);
+    assert.deepEqual(createPaymentIntent("0", context), {
+      ok: true,
+      kind: "download",
+      url: url.href,
+    });
+  }
+});
+
 test("positive amounts never pretend that checkout or payment has completed", () => {
-  for (const context of ["download", "support"]) {
+  for (const context of [...Object.keys(DOWNLOADS), "support"]) {
     const intent = createPaymentIntent("2.50", context);
     assert.deepEqual(intent, {
       ok: true,
@@ -75,4 +90,6 @@ test("positive amounts never pretend that checkout or payment has completed", ()
   }
   assert.equal(createPaymentIntent("-2", "download").ok, false);
   assert.equal(createPaymentIntent("1", "https://example.com").ok, false);
+  assert.equal(createPaymentIntent("1", "constructor").ok, false);
+  assert.equal(createPaymentIntent("1", ["windows-x64"]).ok, false);
 });

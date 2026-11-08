@@ -1,4 +1,4 @@
-import { createPaymentIntent, parseAmount } from "./payments.js";
+import { createPaymentIntent, DOWNLOADS, parseAmount } from "./payments.js";
 
 // The only release URL comes from payments.js. An amount never becomes a URL,
 // HTML, or an arbitrary redirect. Paid intents go through the same-origin API.
@@ -6,13 +6,20 @@ export function setupDownloadFlow({ onOpen = () => {}, onSupportOpen = () => {} 
   const dialog = document.querySelector("#download-dialog");
   const beta = document.querySelector("#beta-dialog");
   const trigger = document.querySelector("#download");
+  const windowsTrigger = document.querySelector("#windows-download");
   const form = document.querySelector("#download-form");
   const amount = document.querySelector("#download-amount");
   const feedback = document.querySelector("#download-feedback");
   const free = document.querySelector("#download-free");
   const submit = document.querySelector("#download-submit");
+  const windowsOptions = document.querySelector("#windows-download-options");
+  const firstWindowsOption = windowsOptions.querySelector("button");
+  const macDetail = document.querySelector("#mac-install-detail");
+  const windowsDetail = document.querySelector("#windows-install-detail");
   const attempts = new Map();
   const busyForms = new Set();
+  let activeTrigger = trigger;
+  let selectedBuild = "download";
   async function checkout(intent, targetForm, feedbackElement) {
     if (busyForms.has(targetForm)) return;
     busyForms.add(targetForm);
@@ -57,45 +64,77 @@ export function setupDownloadFlow({ onOpen = () => {}, onSupportOpen = () => {} 
     for (const preset of presets)
       preset.setAttribute("aria-pressed", String(parsed.ok && parsed.cents === Number(preset.dataset.amount) * 100));
   }
-  function download() {
-    const intent = createPaymentIntent("0", "download");
+  function download(build) {
     const link = document.createElement("a");
-    link.href = intent.url;
-    link.download = "Snowy-macOS-arm64.dmg";
+    link.href = DOWNLOADS[build];
+    link.download = new URL(link.href).pathname.split("/").at(-1);
     document.body.append(link);
     link.click();
     link.remove();
-    dialog.close();
-    beta.showModal();
+    if (build === "download") {
+      dialog.close();
+      beta.showModal();
+    } else {
+      message(feedback, "Your download is starting.");
+    }
   }
-  trigger.addEventListener("click", () => {
-    if (dialog.open) return;
+
+  function showBuild(build) {
+    selectedBuild = build;
+    const windows = build !== "download";
+    activeTrigger = windows ? windowsTrigger : trigger;
+    windowsOptions.hidden = !windows;
+    windowsDetail.hidden = !windows;
+    submit.hidden = windows;
+    macDetail.hidden = windows;
+  }
+
+  function openDownload(build) {
+    if (dialog.open || beta.open || busyForms.has(form)) return;
     onOpen();
+    showBuild(build);
     amount.value = amount.defaultValue;
     updateAmount();
     dialog.showModal();
     amount.focus({ preventScroll: true });
     amount.select();
+  }
+  trigger.addEventListener("click", () => openDownload("download"));
+  windowsTrigger.addEventListener("click", (event) => {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    openDownload("windows-x64");
   });
   for (const id of ["download-close", "download-cancel"])
     document.getElementById(id).addEventListener("click", () => dialog.close());
-  dialog.addEventListener("close", () => trigger.focus({ preventScroll: true }));
+  dialog.addEventListener("close", () => activeTrigger.focus({ preventScroll: true }));
   beta.addEventListener("close", () => trigger.focus({ preventScroll: true }));
   amount.addEventListener("input", updateAmount);
+  amount.addEventListener("keydown", (event) => {
+    if (activeTrigger !== windowsTrigger || event.key !== "Enter" || event.isComposing) return;
+    event.preventDefault();
+    firstWindowsOption.focus();
+  });
   for (const preset of presets)
     preset.addEventListener("click", () => {
       amount.value = preset.dataset.amount;
       updateAmount();
     });
-  free.addEventListener("click", download);
+  free.addEventListener("click", () => download(selectedBuild));
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    const intent = createPaymentIntent(amount.value, "download");
+    const build = activeTrigger === windowsTrigger ? event.submitter?.dataset.build : "download";
+    if (!Object.hasOwn(DOWNLOADS, build)) {
+      firstWindowsOption.focus();
+      return;
+    }
+    selectedBuild = build;
+    const intent = createPaymentIntent(amount.value, build);
     if (!intent.ok) {
       amount.setAttribute("aria-invalid", "true");
       message(feedback, intent.error);
       amount.focus();
-    } else if (intent.kind === "download") download();
+    } else if (intent.kind === "download") download(build);
     else {
       checkout(intent, form, feedback);
     }
@@ -137,7 +176,8 @@ export function setupDownloadFlow({ onOpen = () => {}, onSupportOpen = () => {} 
   const returned = new URL(location.href);
   const reference = returned.searchParams.get('payment');
   if (reference || returned.searchParams.has('payment_cancelled')) {
-    trigger.click();
+    const build = returned.searchParams.get("build");
+    openDownload(Object.hasOwn(DOWNLOADS, build) ? build : "download");
     amount.value = "0";
     updateAmount();
     if (!reference) {
@@ -152,6 +192,7 @@ export function setupDownloadFlow({ onOpen = () => {}, onSupportOpen = () => {} 
             const result = await response.json();
             if (!response.ok) throw Error('We couldn’t confirm this payment. You can still download for $0.');
             if (result.status === 'succeeded') {
+              if (Object.hasOwn(DOWNLOADS, result.context)) showBuild(result.context);
               message(feedback, result.amountCents > 0 ? 'Thank you for supporting Snowy! Your download is ready below.' : 'Your download is ready. Enjoy the snow!');
               history.replaceState(null, '', location.pathname + location.hash);
               return;
@@ -165,4 +206,9 @@ export function setupDownloadFlow({ onOpen = () => {}, onSupportOpen = () => {} 
     }
   }
 
+  function openLinkedDownload() {
+    if (location.hash === "#download-windows") openDownload("windows-x64");
+  }
+  window.addEventListener("hashchange", openLinkedDownload);
+  openLinkedDownload();
 }

@@ -4,6 +4,10 @@ Snowy downloads directly for $0. Positive amounts from the price sheet and wish
 list use Polar hosted checkout. Card details stay on Polar; no payment SDK is
 loaded in the browser. Production API requests and the webhook use `2026-10`.
 
+The Windows price sheet offers a choice of two installers. The selected build
+is stored with the checkout reference so the return opens the Windows sheet
+with both downloads available at $0.
+
 The existing one-time custom USD Snowy product is configured by POLAR_PRODUCT_ID
 in wrangler.jsonc. POLAR_ACCESS_TOKEN and POLAR_WEBHOOK_SECRET are encrypted
 Cloudflare bindings, never source files or frontend variables.

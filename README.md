@@ -48,7 +48,7 @@ Choose [Windows Beta](https://snowy.aauburn.com/#download-windows) for x64 or AR
 
 ## A desktop in your browser
 
-The [website](https://snowy.aauburn.com) has its own movable windows, a bottom Dock, and snow you can push around. There may also be someone thawing out for December. The Mac download is pay what you want, including $0. Optional support uses [Polar hosted checkout](website/docs/payments.md).
+The [website](https://snowy.aauburn.com) has its own movable windows, a bottom Dock, and snow you can push around. There may also be someone thawing out for December. All downloads are pay what you want, including $0. Optional support uses [Polar hosted checkout](website/docs/payments.md).
 
 Run it locally with **Node.js 22 or later**. No packages need installing.
 
