@@ -511,8 +511,8 @@ async function downloadCheck(p, run, mobile = false) {
   assert.equal(await p.evaluate('document.activeElement?.id'), "download-amount");
   assert.equal(await p.evaluate('document.querySelector("#download-amount").value'), "2.99");
   assert.deepEqual(
-    await p.evaluate('[...document.querySelectorAll("#windows-download-options button[data-build]")].map(button => button.dataset.build)'),
-    ["windows-x64", "windows-arm64"],
+    await p.evaluate('[...document.querySelectorAll("#windows-download-options button[data-build]")].map(button => [button.dataset.build, button.textContent.trim()])'),
+    [["windows-x64", "Download x64"], ["windows-arm64", "Download ARM"]],
   );
   await p.key("Enter", "Enter", 13);
   assert.equal(await p.evaluate("document.activeElement?.dataset.build"), "windows-x64");
@@ -521,15 +521,22 @@ async function downloadCheck(p, run, mobile = false) {
   assert.equal(await p.evaluate("window.__snowyCheckoutRequests.at(-1).context"), "windows-x64");
   assert.equal(await p.evaluate("window.__snowyCheckoutRequests.at(-1).amountCents"), 299);
   await p.click("#download-free");
+  const windowsBetaOpen = 'document.querySelector("#beta-dialog").open && !document.querySelector("#download-dialog").open && !document.querySelector("#windows-beta-description").hidden && document.querySelector("#mac-beta-description").hidden';
+  assert.ok(await p.evaluate(windowsBetaOpen));
+  await p.key("Escape", "Escape", 27);
+  assert.equal(await p.evaluate("document.activeElement?.id"), "windows-download");
+  await p.click("#windows-download");
   await p.click('#download-dialog [data-amount="0"]');
+  if (run === 1) await p.screenshot(mobile ? "mobile-windows-download" : "desktop-windows-download");
   await p.click('[data-build="windows-arm64"]');
+  assert.ok(await p.evaluate(windowsBetaOpen));
+  if (run === 1) await p.screenshot(mobile ? "mobile-windows-beta" : "desktop-windows-beta");
   assert.equal(await p.evaluate("window.__snowyCheckoutRequests.length"), 1);
   assert.deepEqual(
     await p.evaluate('window.__snowyDownloads.map(url => url.split("/").at(-1))'),
     ["Snowy-Setup-x64.exe", "Snowy-Setup-arm64.exe"],
     "The free fallback keeps its build and $0 starts the selected installer without checkout",
   );
-  if (run === 1) await p.screenshot(mobile ? "mobile-windows-download" : "desktop-windows-download");
   await p.evaluate("window.__snowyDownloads = []; window.__snowyCheckoutRequests = [];");
   await p.key("Escape", "Escape", 27);
   assert.equal(await p.evaluate("document.activeElement?.id"), "windows-download");
@@ -596,7 +603,7 @@ async function downloadCheck(p, run, mobile = false) {
     ["https://github.com/soloiaros/snowy-mac/releases/latest/download/Snowy-macOS-arm64.dmg"],
     "$0 immediately starts the DMG download without checkout",
   );
-  assert.ok(await p.evaluate('document.querySelector("#beta-dialog").open && !document.querySelector("#download-dialog").open'),
+  assert.ok(await p.evaluate('document.querySelector("#beta-dialog").open && !document.querySelector("#download-dialog").open && !document.querySelector("#mac-beta-description").hidden && document.querySelector("#windows-beta-description").hidden'),
     "Starting the download replaces the price sheet with the beta notice");
   assert.ok(await p.evaluate('document.querySelector("#beta-actions button") === document.activeElement'),
     "The beta notice focuses its dismiss button");

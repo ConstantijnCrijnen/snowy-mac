@@ -15,10 +15,12 @@ export function setupDownloadFlow({ onOpen = () => {}, onSupportOpen = () => {} 
   const windowsOptions = document.querySelector("#windows-download-options");
   const firstWindowsOption = windowsOptions.querySelector("button");
   const macDetail = document.querySelector("#mac-install-detail");
-  const windowsDetail = document.querySelector("#windows-install-detail");
+  const macBetaDescription = document.querySelector("#mac-beta-description");
+  const windowsBetaDescription = document.querySelector("#windows-beta-description");
   const attempts = new Map();
   const busyForms = new Set();
   let activeTrigger = trigger;
+  let betaTrigger = trigger;
   let selectedBuild = "download";
   async function checkout(intent, targetForm, feedbackElement) {
     if (busyForms.has(targetForm)) return;
@@ -71,12 +73,12 @@ export function setupDownloadFlow({ onOpen = () => {}, onSupportOpen = () => {} 
     document.body.append(link);
     link.click();
     link.remove();
-    if (build === "download") {
-      dialog.close();
-      beta.showModal();
-    } else {
-      message(feedback, "Your download is starting.");
-    }
+    const windows = build !== "download";
+    betaTrigger = windows ? windowsTrigger : trigger;
+    macBetaDescription.hidden = windows;
+    windowsBetaDescription.hidden = !windows;
+    dialog.close();
+    beta.showModal();
   }
 
   function showBuild(build) {
@@ -84,7 +86,6 @@ export function setupDownloadFlow({ onOpen = () => {}, onSupportOpen = () => {} 
     const windows = build !== "download";
     activeTrigger = windows ? windowsTrigger : trigger;
     windowsOptions.hidden = !windows;
-    windowsDetail.hidden = !windows;
     submit.hidden = windows;
     macDetail.hidden = windows;
   }
@@ -107,8 +108,10 @@ export function setupDownloadFlow({ onOpen = () => {}, onSupportOpen = () => {} 
   });
   for (const id of ["download-close", "download-cancel"])
     document.getElementById(id).addEventListener("click", () => dialog.close());
-  dialog.addEventListener("close", () => activeTrigger.focus({ preventScroll: true }));
-  beta.addEventListener("close", () => trigger.focus({ preventScroll: true }));
+  dialog.addEventListener("close", () => {
+    if (!beta.open) activeTrigger.focus({ preventScroll: true });
+  });
+  beta.addEventListener("close", () => betaTrigger.focus({ preventScroll: true }));
   amount.addEventListener("input", updateAmount);
   amount.addEventListener("keydown", (event) => {
     if (activeTrigger !== windowsTrigger || event.key !== "Enter" || event.isComposing) return;

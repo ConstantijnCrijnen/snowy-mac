@@ -959,7 +959,8 @@ h1 {
   color: #1b3348;
 }
 #download-description { font-size: 13px; line-height: 1.5; margin: 0 0 20px; }
-#beta-description { font-size: 13px; line-height: 1.5; margin: 0; }
+#beta-description { font-size: 13px; line-height: 1.5; }
+#beta-description > p { margin: 0; }
 .windows-download-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -972,22 +973,29 @@ h1 {
   font-size: 12px;
 }
 #windows-download-hint { color: #526b7c; }
+.windows-download-choice {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+}
 .windows-download-options .aqua-button {
-  flex-direction: column;
-  gap: 3px;
-  min-height: 56px;
+  min-width: 0;
+  min-height: 44px;
   padding: 8px;
   border-radius: 12px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.25;
   white-space: normal;
 }
-.windows-download-options small {
+.windows-architecture-note {
+  margin: 0;
+  color: #526b7c;
   font-size: 11px;
-  font-weight: 400;
+  line-height: 1.4;
+  text-align: center;
 }
-#windows-install-detail { font-size: 11px; }
+.windows-architecture-note span { display: block; }
 #download-form > label { display: block; font-size: 12px; margin-bottom: 8px; }
 #download-form > label span { color: #607587; }
 .download-amount-field { height: 49px; padding: 7px 13px; font: 27px/1.2 "Helvetica Neue", sans-serif; }

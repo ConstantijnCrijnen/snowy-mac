@@ -464,14 +464,20 @@
           <div id="windows-download-options" class="windows-download-options" role="group" aria-labelledby="windows-download-label" aria-describedby="windows-download-hint" hidden>
             <p id="windows-download-label">Choose your Windows installer</p>
             <p id="windows-download-hint">Choose $0 to download right away.</p>
-            <button class="aqua-button" type="submit" data-build="windows-x64">
-              <span>Most Windows PCs</span>
-              <small>Intel or AMD</small>
-            </button>
-            <button class="aqua-button" type="submit" data-build="windows-arm64">
-              <span>Windows on Arm</span>
-              <small>Snapdragon and other Arm chips</small>
-            </button>
+            <div class="windows-download-choice">
+              <button class="aqua-button" type="submit" data-build="windows-x64" aria-describedby="windows-x64-note">Download x64</button>
+              <p id="windows-x64-note" class="windows-architecture-note">
+                <strong>Most Windows PCs</strong>
+                <span>Intel or AMD</span>
+              </p>
+            </div>
+            <div class="windows-download-choice">
+              <button class="aqua-button" type="submit" data-build="windows-arm64" aria-describedby="windows-arm-note">Download ARM</button>
+              <p id="windows-arm-note" class="windows-architecture-note">
+                <strong>Windows on Arm</strong>
+                <span>Snapdragon and other Arm chips</span>
+              </p>
+            </div>
           </div>
           <div class="dialog-actions">
             <button id="download-cancel" class="mini-button" type="button">Cancel</button>
@@ -479,7 +485,6 @@
           </div>
         </form>
         <p id="mac-install-detail" class="install-detail">Open the DMG, then drag Snowy into Applications.</p>
-        <p id="windows-install-detail" class="install-detail" hidden>Open the setup file and choose <strong>Install</strong>. SmartScreen may warn about this unsigned beta.</p>
       </div>
     </dialog>
     <dialog id="beta-dialog" class="download-dialog" aria-labelledby="beta-title" aria-describedby="beta-description">
@@ -490,7 +495,10 @@
       <div class="download-dialog-body">
         <svg class="dialog-app-icon" aria-hidden="true"><use href="./assets/icons.svg#snow" /></svg>
         <h2 id="beta-title">Snowy is in beta</h2>
-        <p id="beta-description">If macOS blocks Snowy on first launch, go to <strong>System Settings → Privacy &amp; Security → Open Anyway</strong> and confirm for this download.</p>
+        <div id="beta-description">
+          <p id="mac-beta-description">If macOS blocks Snowy on first launch, go to <strong>System Settings → Privacy &amp; Security → Open Anyway</strong> and confirm for this download.</p>
+          <p id="windows-beta-description" hidden>Open the unsigned beta installer from Downloads. If SmartScreen says “Windows protected your PC,” verify you downloaded it through Snowy’s site, then choose <strong>More info → Run anyway</strong> if offered. If Windows still blocks setup, leave protections on.</p>
+        </div>
         <form id="beta-actions" class="dialog-actions" method="dialog">
           <button class="aqua-button" type="submit" autofocus>Got it</button>
         </form>
