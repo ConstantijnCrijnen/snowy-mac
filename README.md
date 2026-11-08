@@ -42,13 +42,13 @@ open build/Snowy.app
 
 The build script compiles the app and shaders, adds a local signature, and leaves the app in `build/`. It does not launch or install anything. If Xcode reports a missing Metal toolchain, install it from Xcode’s component settings first.
 
-## Windows development
+## Windows 11 beta
 
-The separate Windows 11 app lives in [`windows/`](windows/README.md). It uses the Windows system tray, desktop window bounds, and bottom taskbar. The development build targets both x64 PCs and ARM64, including Windows 11 running in UTM.
+Choose [Windows Beta](https://snowy.aauburn.com/#download-windows) for x64 or ARM64. Open the setup file and follow the installer. Snowy lives in the system tray near the clock. The beta is unsigned, so Windows SmartScreen may warn or block it. [Windows build and update instructions](windows/README.md)
 
 ## A desktop in your browser
 
-The [website](https://snowy.aauburn.com) has its own movable windows, a bottom Dock, and snow you can push around. There may also be someone thawing out for December. Downloads are pay what you want, including $0; optional support uses [Polar hosted checkout](website/docs/payments.md).
+The [website](https://snowy.aauburn.com) has its own movable windows, a bottom Dock, and snow you can push around. There may also be someone thawing out for December. The Mac download is pay what you want, including $0. Optional support uses [Polar hosted checkout](website/docs/payments.md).
 
 Run it locally with **Node.js 22 or later**. No packages need installing.
 

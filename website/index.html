@@ -88,7 +88,7 @@
               aria-label="Resize About Snowy"
             ></button>
           </div>
-          <span>Snowy for Mac</span
+          <span>Snowy</span
           ><svg class="title-icon" aria-hidden="true">
             <use href="./assets/icons.svg#snow" />
           </svg>
@@ -98,19 +98,27 @@
             <use href="./assets/icons.svg#snow" />
           </svg>
           <h1>Snowy</h1>
-          <p class="welcome-subtitle">A little winter for your Mac.</p>
-          <button
-            id="download"
-            class="aqua-button download-button"
-            type="button"
-            aria-haspopup="dialog"
-            aria-controls="download-dialog"
-            ><svg aria-hidden="true">
-              <use href="./assets/icons.svg#laptop" /></svg
-            >Get Snowy for Mac</button
-          >
+          <p class="welcome-subtitle">A little winter for your desktop.</p>
+          <div class="platform-downloads">
+            <button
+              id="download"
+              class="aqua-button download-button"
+              type="button"
+              aria-haspopup="dialog"
+              aria-controls="download-dialog"
+              ><svg aria-hidden="true">
+                <use href="./assets/icons.svg#laptop" /></svg
+              >Get Snowy for Mac</button
+            >
+            <a id="windows-download" class="aqua-button download-button" aria-haspopup="dialog"
+              aria-controls="windows-download-dialog"
+              href="https://github.com/soloiaros/snowy-mac/releases/tag/windows-v0.1.4.0">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z" /></svg>
+              Windows Beta
+            </a>
+          </div>
           <p class="download-detail">
-            Pay what you want, including $0. macOS 14+, Apple silicon.
+            macOS 14+ on Apple silicon · Windows 11 on x64 or ARM64
           </p>
           <a
             class="quiet-link"
@@ -459,6 +467,27 @@
           </div>
         </form>
         <p class="install-detail">Open the DMG, then drag Snowy into Applications.</p>
+      </div>
+    </dialog>
+    <dialog id="windows-download-dialog" class="download-dialog" aria-labelledby="windows-download-title" aria-describedby="windows-download-description">
+      <header class="dialog-titlebar">
+        <div class="traffic-lights"><button class="light close" aria-label="Close Windows download" form="windows-download-actions" type="submit"></button></div>
+        <span>Snowy for Windows</span>
+      </header>
+      <div class="download-dialog-body">
+        <svg class="dialog-app-icon" aria-hidden="true"><use href="./assets/icons.svg#snow" /></svg>
+        <h2 id="windows-download-title">Snowy for Windows Beta</h2>
+        <p id="windows-download-description">Choose the free installer for your Windows 11 PC. Find your system type in <strong>Settings → System → About</strong>.</p>
+        <div class="windows-installers">
+          <a class="aqua-button" href="https://github.com/soloiaros/snowy-mac/releases/download/windows-v0.1.4.0/Snowy-Setup-x64.exe">Download x64</a>
+          <span>Intel and AMD PCs</span>
+          <a class="aqua-button" href="https://github.com/soloiaros/snowy-mac/releases/download/windows-v0.1.4.0/Snowy-Setup-arm64.exe">Download ARM64</a>
+          <span>Snapdragon PCs and Apple silicon VMs</span>
+        </div>
+        <p class="windows-beta-detail">Open the setup file and choose <strong>Install</strong>. This beta is unsigned, so Windows SmartScreen may warn or block it.</p>
+        <form id="windows-download-actions" class="dialog-actions" method="dialog">
+          <button class="mini-button" type="submit">Close</button>
+        </form>
       </div>
     </dialog>
     <dialog id="beta-dialog" class="download-dialog" aria-labelledby="beta-title" aria-describedby="beta-description">

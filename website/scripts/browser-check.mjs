@@ -505,6 +505,20 @@ async function downloadCheck(p, run, mobile = false) {
     return true;
   })()`);
   const windowsBefore = await p.evaluate("SnowyDesktop.visibleWindowIDs");
+  await p.click("#windows-download");
+  assert.ok(await p.evaluate('document.querySelector("#windows-download-dialog").open'));
+  assert.ok(await p.evaluate('document.querySelector("#windows-download-dialog").contains(document.activeElement)'));
+  assert.deepEqual(
+    await p.evaluate('[...document.querySelectorAll(".windows-installers a")].map(link => link.href.split("/").at(-1))'),
+    ["Snowy-Setup-x64.exe", "Snowy-Setup-arm64.exe"],
+  );
+  await p.key("Escape", "Escape", 27);
+  assert.equal(await p.evaluate("document.activeElement?.id"), "windows-download");
+  await p.evaluate('location.hash = "download-windows"');
+  await p.wait('document.querySelector("#windows-download-dialog").open');
+  await p.key("Escape", "Escape", 27);
+  await p.evaluate('history.replaceState(null, "", location.pathname)');
+  assert.deepEqual(await p.evaluate("SnowyDesktop.visibleWindowIDs"), windowsBefore);
   await p.click("#download");
   assert.ok(await p.evaluate('document.querySelector("#download-dialog").open'));
   assert.equal(

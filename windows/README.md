@@ -25,9 +25,9 @@ dotnet publish Snowy.Windows -c Release -r win-x64 --self-contained true -o ../b
 
 Copy the whole output folder to Windows and run `Snowy.exe` there. For Windows 11 on an M-series Mac in UTM, use `win-arm64`. These commands are for development builds.
 
-## Install the desktop preview
+## Install the Windows beta
 
-Use `Snowy-Setup-arm64.exe` for Windows 11 in UTM on Apple Silicon or on an ARM PC. Use `Snowy-Setup-x64.exe` for an Intel or AMD PC. Get the setup and its `.sha256` file from the same passing **Windows desktop setup** run. Copy the EXE to the Windows guest's local Downloads folder, open it, and click **Install**. Snowy appears in Start and in **Settings → Apps → Installed apps**.
+Use the [Windows beta download](https://snowy.aauburn.com/#download-windows) to choose **x64** for Intel and AMD PCs or **ARM64** for Windows on Arm, including UTM on Apple silicon. Open the EXE from Downloads and click **Install**. Snowy appears in Start and in **Settings → Apps → Installed apps**. Checksums are available alongside both installers on GitHub Releases.
 
 Setup installs for the current account. It uses Snowy's Blue Hour artwork, includes the .NET runtime, and preserves your settings and scenes if you reinstall or uninstall it. The preview EXE is unsigned, so SmartScreen or Smart App Control may warn or block it. [Microsoft's SmartScreen guide](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
 
@@ -38,7 +38,9 @@ cd windows
 ./installer/package-setup.ps1 -MakeNsis 'C:\path\to\makensis.exe' -UpdateDefenderSignatures
 ```
 
-To update a desktop preview, quit Snowy from the tray and run the newer setup. The in-app update feed applies to the signed MSIX distribution.
+When a newer desktop beta is available, **Update** appears in the snowflake menu and opens the download chooser. Download the installer, choose **Quit Snowy** from the tray, and run the new setup. Your settings and scenes carry over.
+
+For future beta releases, build and scan both EXEs with **Windows desktop setup**, publish the installers and their checksums under `windows-v<four-part-version>` as a prerelease, then update the download links in `website/index.html` and the version in `website/windows/update.json` together. The feed only announces a newer version after both installers are available.
 
 ## Test the MSIX package
 

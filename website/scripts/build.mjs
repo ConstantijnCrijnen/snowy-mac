@@ -35,6 +35,7 @@ for (const file of [
   "styles.css",
   "src",
   "assets",
+  "windows",
   "_headers",
   ".assetsignore",
 ]) {
