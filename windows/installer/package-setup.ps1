@@ -13,7 +13,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 if (-not $IsWindows) { throw 'Run this script in PowerShell 7 on Windows.' }
-if (($Version.Split('.') | Where-Object { [int]$_ -gt 65535 }).Count -gt 0) {
+if (@($Version.Split('.') | Where-Object { [int]$_ -gt 65535 }).Count -gt 0) {
     throw 'Each version component must fit in 16 bits.'
 }
 $Version = ([version]$Version).ToString()
