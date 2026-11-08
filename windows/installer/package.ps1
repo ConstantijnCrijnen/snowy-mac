@@ -1,6 +1,6 @@
 param(
     [ValidatePattern('^\d{1,5}\.\d{1,5}\.\d{1,5}\.\d{1,5}$')]
-    [string] $Version = "0.1.2.0",
+    [string] $Version = "0.1.4.0",
     [ValidatePattern('^([0-9A-Fa-f]{40})?$')]
     [string] $CertificateThumbprint = "",
     [ValidatePattern('^([0-9A-Fa-f]{40})?$')]

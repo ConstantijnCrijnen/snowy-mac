@@ -48,6 +48,7 @@ XPStyle on
 VIProductVersion "${AppVersion}"
 VIAddVersionKey /LANG=1033 "ProductName" "Snowy"
 VIAddVersionKey /LANG=1033 "ProductVersion" "${AppVersion}"
+VIAddVersionKey /LANG=1033 "FileVersion" "${AppVersion}"
 VIAddVersionKey /LANG=1033 "FileDescription" "Snowy desktop snowfall"
 VIAddVersionKey /LANG=1033 "CompanyName" "Snowy"
 VIAddVersionKey /LANG=1033 "LegalCopyright" "Copyright Snowy"
