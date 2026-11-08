@@ -1,6 +1,6 @@
 # Snowy for Windows
 
-A separate Windows 11 app for the same interactive desktop snow. Snowy lives in the system tray. Right-click the snowflake near the clock to change the snowfall, choose Glove or Shovel, open Wind, or pause and clear the snow. Left-click it for Wallpapers, Decorations, and the Guide.
+A separate Windows 11 app for the same interactive desktop snow. Click the snowflake near the clock to change the snowfall, choose Glove or Shovel, open Wind, or pause and clear the snow. Choose **Open Snowy…** from that menu for Wallpapers, Decorations, and the Guide. If the snowflake is hidden, look under the up arrow in the system tray.
 
 Snow rests on visible window tops and the bottom taskbar. Windows Search and Start can collect snow when the shell exposes a distinct visible window. The Widgets board and Snap previews can cover the effect while visible without becoming surfaces. Snow and props use a click-through layer with app windows masked out. Windows that are minimized or cloaked on another virtual desktop are ignored.
 

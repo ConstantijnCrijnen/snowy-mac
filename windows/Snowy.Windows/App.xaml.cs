@@ -3,7 +3,9 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using Snowy.Core;
 using Snowy.Windows.Decorations;
@@ -26,7 +28,6 @@ public partial class App : Application
     private DecorationService? decorations;
     private Tray.NotifyIcon? icon;
     private System.Drawing.Icon? trayArt;
-    private Tray.ContextMenuStrip? menu;
     private Window? main;
     private Window? wind;
     private Window? welcome;
@@ -71,23 +72,24 @@ public partial class App : Application
     {
         using var stream = GetResourceStream(new Uri("pack://application:,,,/Assets/Snowy.ico")).Stream;
         trayArt = new System.Drawing.Icon(stream, 32, 32);
-        menu = new Tray.ContextMenuStrip();
+        var menu = new ContextMenu { Placement = PlacementMode.MousePoint };
         var support = Item("Drop some coins", () => OpenUrl("https://snowy.aauburn.com/#drop-some-coins"));
         var open = Item("Open Snowy…", OpenSnowy);
         var pause = Item("Pause Snow", () => { settings.Enabled = !settings.Enabled; Save(); });
         var clear = Item("Clear Settled Snow", () => desktop?.Clear());
-        var tools = new Tray.ToolStripMenuItem("Cursor Tool");
+        var tools = new MenuItem { Header = "Cursor Tool" };
         var toolOptions = Enum.GetValues<SnowTool>().Select(tool =>
             Item(tool.ToString(), () => { settings.Tool = tool; Save(); })).ToArray();
-        tools.DropDownItems.AddRange(toolOptions);
-        var snowfall = new Tray.ToolStripMenuItem("Snowfall");
+        foreach (var item in toolOptions) tools.Items.Add(item);
+        var snowfall = new MenuItem { Header = "Snowfall" };
         var fallOptions = Enum.GetValues<Snowfall>().Select(level =>
             Item(level.ToString(), () => { settings.Snowfall = level; Save(); })).ToArray();
-        snowfall.DropDownItems.AddRange(fallOptions);
-        var update = new Tray.ToolStripMenuItem("Update")
+        foreach (var item in fallOptions) snowfall.Items.Add(item);
+        var update = new MenuItem
         {
-            ForeColor = System.Drawing.SystemColors.HotTrack,
-            Visible = false
+            Header = "Update",
+            Foreground = SystemColors.HotTrackBrush,
+            Visibility = Visibility.Collapsed
         };
         update.Click += async (_, _) =>
         {
@@ -95,26 +97,31 @@ public partial class App : Application
                 icon?.ShowBalloonTip(4000, "Snowy Update", "The update couldn’t be installed. Please try again later.", Tray.ToolTipIcon.Warning);
         };
         var windItem = Item("Wind…", () => Dispatcher.BeginInvoke(DispatcherPriority.Background, OpenWind));
-        menu.Items.AddRange([support, new Tray.ToolStripSeparator(), open, pause, clear, tools,
-            snowfall, windItem, new Tray.ToolStripSeparator(), update, Item("Quit Snowy", () => Shutdown())]);
-        menu.Opening += (_, _) =>
+        foreach (var item in new Control[] { support, new Separator(), open, pause, clear, tools,
+                     snowfall, windItem, new Separator(), update, Item("Quit Snowy", () => Shutdown()) })
+            menu.Items.Add(item);
+        menu.Opened += (_, _) =>
         {
-            pause.Text = settings.Enabled ? "Pause Snow" : "Resume Snow";
-            foreach (var item in toolOptions) item.Checked = item.Text == settings.Tool.ToString();
-            foreach (var item in fallOptions) item.Checked = item.Text == settings.Snowfall.ToString();
-            update.Visible = updater.Available;
-            update.Enabled = !updater.Installing;
+            // The tray can open the menu while Snowy has no active window.
+            if (PresentationSource.FromVisual(menu) is HwndSource source) SetForegroundWindow(source.Handle);
+            menu.Focus();
         };
-        icon = new Tray.NotifyIcon { Icon = trayArt, Text = "Snowy", ContextMenuStrip = menu, Visible = true };
+        icon = new Tray.NotifyIcon { Icon = trayArt, Text = "Snowy controls", Visible = true };
         icon.MouseClick += (_, args) =>
         {
-            if (args.Button == Tray.MouseButtons.Left) OpenSnowy();
+            if (args.Button is not (Tray.MouseButtons.Left or Tray.MouseButtons.Right) || menu.IsOpen) return;
+            pause.Header = settings.Enabled ? "Pause Snow" : "Resume Snow";
+            foreach (var item in toolOptions) item.IsChecked = Equals(item.Header, settings.Tool.ToString());
+            foreach (var item in fallOptions) item.IsChecked = Equals(item.Header, settings.Snowfall.ToString());
+            update.Visibility = updater.Available ? Visibility.Visible : Visibility.Collapsed;
+            update.IsEnabled = !updater.Installing;
+            menu.IsOpen = true;
         };
     }
 
-    private static Tray.ToolStripMenuItem Item(string text, Action action)
+    private static MenuItem Item(string text, Action action)
     {
-        var item = new Tray.ToolStripMenuItem(text);
+        var item = new MenuItem { Header = text };
         item.Click += (_, _) => action();
         return item;
     }
@@ -204,13 +211,16 @@ public partial class App : Application
 
     private void Save() => settings.Save(dataDirectory);
 
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr window);
+
     protected override void OnExit(ExitEventArgs e)
     {
         updateTimer?.Stop();
         signalWait?.Unregister(null);
         openSignal?.Dispose();
         icon?.Dispose();
-        menu?.Dispose();
         trayArt?.Dispose();
         desktop?.Dispose();
         instance?.Dispose();

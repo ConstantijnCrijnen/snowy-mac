@@ -15,7 +15,7 @@ internal static class WelcomeWindow
         ("Sweep snow and set the wind",
             "Sweep a pile with your pointer. Choose Shovel for a wider sweep. In Wind, drag the arrow to set its direction and strength."),
         ("Snowy in the system tray",
-            "Find the snowflake near the clock, including under the hidden icons arrow. Open its menu to pause snow, change intensity, or open Snowy for wallpapers and decorations.")
+            "Click the snowflake near the clock to open the controls. If it’s hidden, look under the up arrow. Choose Open Snowy for wallpapers and decorations.")
     ];
 
     public static Window Create()
