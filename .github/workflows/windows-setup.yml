@@ -1,0 +1,133 @@
+name: Windows desktop setup
+
+on:
+  pull_request:
+    paths: ['windows/**', '.github/workflows/windows-setup.yml']
+  push:
+    branches: [main, 'codex/windows-*']
+    paths: ['windows/**', '.github/workflows/windows-setup.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-setup-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: windows/global.json
+      - name: Verify and extract the NSIS compiler
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'nsis-3.13.zip'
+          $url = 'https://downloads.sourceforge.net/project/nsis/NSIS%203/3.13/nsis-3.13.zip'
+          # SHA-256 from the NSIS project's SourceForge download page.
+          $expected = 'ba63dffc4410ee89193e1cb5a41989991bd77c61068da17e3156d136b7b0b3d8'
+          curl.exe --fail --location --retry 3 --max-time 90 --output $zip $url
+          if ($LASTEXITCODE -ne 0 -or (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $expected) {
+            throw 'The NSIS compiler download could not be verified.'
+          }
+          Expand-Archive -LiteralPath $zip -DestinationPath $env:RUNNER_TEMP
+      - name: Build and Defender-scan both setup files
+        run: |
+          ./installer/package-setup.ps1 -MakeNsis (Join-Path $env:RUNNER_TEMP 'nsis-3.13/makensis.exe') -UpdateDefenderSignatures -AllowDefenderUnavailable
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: build/windows-setup/*/Snowy-Setup-arm64.exe
+          archive: false
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: build/windows-setup/*/Snowy-Setup-arm64.exe.sha256
+          archive: false
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: build/windows-setup/*/Snowy-Setup-x64.exe
+          archive: false
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: build/windows-setup/*/Snowy-Setup-x64.exe.sha256
+          archive: false
+          if-no-files-found: error
+
+  install:
+    name: Install and remove setup (${{ matrix.architecture }})
+    needs: build
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { architecture: arm64, runner: windows-11-arm, machine: 43620 }
+          - { architecture: x64, runner: windows-latest, machine: 34404 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: Snowy-Setup-${{ matrix.architecture }}.exe*
+          path: ${{ runner.temp }}/snowy-setup-check
+          merge-multiple: true
+      - name: Verify per-user install, reinstall, and uninstall
+        working-directory: ${{ runner.temp }}/snowy-setup-check
+        env:
+          SETUP_ARCHITECTURE: ${{ matrix.architecture }}
+          EXPECTED_MACHINE: ${{ matrix.machine }}
+        run: |
+          $name = "Snowy-Setup-$env:SETUP_ARCHITECTURE.exe"
+          $setup = (Resolve-Path -LiteralPath $name).Path
+          $hash = ((Get-Content -LiteralPath "$name.sha256" -Raw) -split '\s+')[0]
+          if ((Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash -ne $hash) {
+            throw 'Setup checksum does not match.'
+          }
+
+          $installed = Join-Path $env:LOCALAPPDATA 'Programs\Snowy'
+          $app = Join-Path $installed 'Snowy.exe'
+          $uninstaller = Join-Path $installed 'Uninstall.exe'
+          $uninstallEntry = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Snowy'
+          $shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'Snowy.lnk'
+          if ((Test-Path -LiteralPath $installed) -or (Test-Path -LiteralPath $uninstallEntry) -or
+              (Test-Path -LiteralPath $shortcut)) {
+            throw 'The smoke test requires a fresh Windows user.'
+          }
+          $settings = Join-Path $env:LOCALAPPDATA 'Snowy\setup-test.txt'
+          New-Item -ItemType Directory -Force (Split-Path -Parent $settings) | Out-Null
+          Set-Content -LiteralPath $settings -Value 'settings stay'
+
+          foreach ($pass in 1..2) {
+            $result = Start-Process -FilePath $setup -ArgumentList '/S' -PassThru -Wait
+            if ($result.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $app) -or
+                -not (Test-Path -LiteralPath $uninstaller) -or -not (Test-Path -LiteralPath $shortcut) -or
+                -not (Test-Path -LiteralPath $uninstallEntry)) {
+              throw "Install pass $pass did not register Snowy correctly (exit $($result.ExitCode))."
+            }
+          }
+
+          $pe = [IO.File]::ReadAllBytes($app)
+          $machine = [BitConverter]::ToUInt16($pe, [BitConverter]::ToInt32($pe, 0x3c) + 4)
+          if ($machine -ne [int]$env:EXPECTED_MACHINE) { throw "Wrong installed PE machine type: $machine" }
+          if (Get-Process -Name Snowy -ErrorAction SilentlyContinue) { throw 'Silent setup launched Snowy.' }
+          $otherFile = Join-Path $installed 'setup-test-user-file.txt'
+          Set-Content -LiteralPath $otherFile -Value 'user file stays'
+
+          $result = Start-Process -FilePath $uninstaller -ArgumentList '/S' -PassThru -Wait
+          if ($result.ExitCode -ne 0 -or (Test-Path -LiteralPath $app) -or
+              (Test-Path -LiteralPath $uninstallEntry) -or (Test-Path -LiteralPath $shortcut) -or
+              (Get-Content -LiteralPath $settings -Raw).Trim() -ne 'settings stay' -or
+              (Get-Content -LiteralPath $otherFile -Raw).Trim() -ne 'user file stays') {
+            throw 'Uninstall did not remove Snowy cleanly and preserve other files.'
+          }
+          Write-Host "Verified $env:SETUP_ARCHITECTURE setup, native app payload, reinstall, and uninstall."

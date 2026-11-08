@@ -25,7 +25,22 @@ dotnet publish Snowy.Windows -c Release -r win-x64 --self-contained true -o ../b
 
 Copy the whole output folder to Windows and run `Snowy.exe` there. For Windows 11 on an M-series Mac in UTM, use `win-arm64`. These commands are for development builds.
 
-## Try the installer in a Windows VM
+## Install the desktop preview
+
+Use `Snowy-Setup-arm64.exe` for Windows 11 in UTM on Apple Silicon or on an ARM PC. Use `Snowy-Setup-x64.exe` for an Intel or AMD PC. Get the setup and its `.sha256` file from the same passing **Windows desktop setup** run. Copy the EXE to the Windows guest's local Downloads folder, open it, and click **Install**. Snowy appears in Start and in **Settings → Apps → Installed apps**.
+
+Setup installs for the current account. It uses Snowy's Blue Hour artwork, includes the .NET runtime, and preserves your settings and scenes if you reinstall or uninstall it. The preview EXE is unsigned, so SmartScreen or Smart App Control may warn or block it. [Microsoft's SmartScreen guide](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
+
+To build setup from source, use PowerShell 7 and NSIS 3.13 on Windows. Open an elevated terminal for the build's Defender scan.
+
+```powershell
+cd windows
+./installer/package-setup.ps1 -MakeNsis 'C:\path\to\makensis.exe' -UpdateDefenderSignatures
+```
+
+To update a desktop preview, quit Snowy from the tray and run the newer setup. The in-app update feed applies to the signed MSIX distribution.
+
+## Test the MSIX package
 
 For UTM on Apple Silicon, download `Snowy-Windows-arm64-preview.msix`, its `.sha256` file, and `Snowy-Preview.cer` from the same Windows checks run. For x64, use `Snowy-Windows-preview.msixbundle` and its matching checksum. Copy the files to the Windows guest's local Downloads folder on `C:`. UTM's shared folder is a network drive. Use it to transfer the files, then open the installer from the local copy.
 
