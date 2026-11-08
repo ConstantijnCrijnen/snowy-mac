@@ -93,6 +93,11 @@ public partial class App : Application
         };
         update.Click += async (_, _) =>
         {
+            if (updater.UsesBetaInstaller)
+            {
+                OpenUrl(PackageUpdater.BetaDownload.AbsoluteUri);
+                return;
+            }
             if (!await updater.Install())
                 icon?.ShowBalloonTip(4000, "Snowy Update", "The update couldn’t be installed. Please try again later.", Tray.ToolTipIcon.Warning);
         };
