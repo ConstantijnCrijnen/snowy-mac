@@ -9,19 +9,23 @@ namespace Snowy.Core;
 /// </summary>
 public sealed class SnowSimulation
 {
-    private const int MaximumBodies = 96;
-    private const int MaximumProfiles = 4096;
+    private const int MaximumBodies = 512;
+    private const int MaximumProfiles = 16_384;
     private const int MaximumFlakes = 160;
-    private const int MaximumParcels = 2048;
-    private const int MaximumLoosePatches = 512;
     private const float Epsilon = 0.0001f;
     private readonly List<SurfaceState> _surfaces = new(MaximumBodies + 1);
     private readonly List<Flake> _flakes = new(MaximumFlakes);
-    private readonly List<Parcel> _parcels = new(MaximumParcels);
-    private readonly List<SnowPatch> _loosePatches = new(MaximumLoosePatches);
-    private readonly Dictionary<int, PatchAccumulator> _patchGroups = new(MaximumLoosePatches);
+    private readonly LooseSnowField _looseSnow;
     private readonly List<Body> _bodies = new(MaximumBodies);
     private readonly List<SnowProfile> _profileView = new(MaximumBodies + 1);
+    private readonly List<int>[] _surfaceBuckets;
+    private readonly List<int>[] _bodyBuckets;
+    private readonly List<int> _surfaceCandidates = new(MaximumBodies + 1);
+    private readonly List<int> _bodyCandidates = new(MaximumBodies);
+    private readonly int[] _surfaceCandidateStamps = new int[MaximumBodies + 1];
+    private readonly int[] _bodyCandidateStamps = new int[MaximumBodies];
+    private int _surfaceCandidateGeneration;
+    private int _bodyCandidateGeneration;
     private Vector2? _previousPointer;
     private Vector2 _wind;
     private float _elapsed;
@@ -33,6 +37,9 @@ public sealed class SnowSimulation
     {
         Width = Math.Clamp(width, 1, 8192);
         Height = Math.Clamp(height, 1, 8192);
+        _looseSnow = new LooseSnowField(Width, Height);
+        _surfaceBuckets = Enumerable.Range(0, (Width + 63) / 64 + 2).Select(_ => new List<int>()).ToArray();
+        _bodyBuckets = Enumerable.Range(0, _surfaceBuckets.Length).Select(_ => new List<int>()).ToArray();
         BuildFloor();
     }
 
@@ -40,8 +47,9 @@ public sealed class SnowSimulation
     public int Height { get; }
     public IReadOnlyList<Flake> Flakes => _flakes;
     public IReadOnlyList<SnowProfile> Profiles => _profileView;
-    public IReadOnlyList<SnowPatch> LoosePatches => _loosePatches;
-    public int ActiveParcelCount => _parcels.Count;
+    public IReadOnlyList<SnowCell> LooseCells => _looseSnow.Cells;
+    public float LooseCellPitch => _looseSnow.RenderPitch;
+    public int ActiveLooseCellCount => _looseSnow.ActiveCount;
 
     /// <summary>Provide current visible physical supports. Stable IDs preserve their snow when they move.</summary>
     public void SetBodies(IReadOnlyList<Body> bodies)
@@ -53,7 +61,8 @@ public sealed class SnowSimulation
         {
             if (next.Count == MaximumBodies) break;
             if (!candidate.IsValid || !ids.Add(candidate.Id)) continue;
-            next.Add(candidate with { CornerRadius = Math.Clamp(candidate.CornerRadius, 0, MathF.Min(candidate.Size.X, candidate.Size.Y) * 0.5f) });
+            var corner = float.IsFinite(candidate.CornerRadius) ? candidate.CornerRadius : 0;
+            next.Add(candidate with { CornerRadius = Math.Clamp(corner, 0, MathF.Min(candidate.Size.X, candidate.Size.Y) * 0.5f) });
         }
 
         var oldById = _bodies.ToDictionary(body => body.Id);
@@ -87,6 +96,9 @@ public sealed class SnowSimulation
         _surfaces.AddRange(nextSurfaces);
         _bodies.Clear();
         _bodies.AddRange(next);
+        _looseSnow.SetBodies(_bodies);
+        RebuildBodyBuckets();
+        RebuildSurfaceBuckets();
         _exposureDirty = true;
         RecomputeExposure();
 
@@ -94,6 +106,7 @@ public sealed class SnowSimulation
         foreach (var body in next)
         {
             if (oldById.ContainsKey(body.Id)) continue;
+            _looseSnow.Erase(body);
             foreach (var surface in nextSurfaces)
             {
                 if (surface.Body?.Id == body.Id) continue;
@@ -106,6 +119,7 @@ public sealed class SnowSimulation
         foreach (var changedBody in next)
         {
             if (!oldById.TryGetValue(changedBody.Id, out var oldBody) || oldBody == changedBody) continue;
+            _looseSnow.Push(oldBody, changedBody);
             var movingSurface = nextSurfaces.First(surface => surface.Body?.Id == changedBody.Id);
             TransferOverlappedCap(movingSurface, changedBody, nextSurfaces);
             PushSnowInBody(movingSurface, oldBody, changedBody, nextSurfaces);
@@ -116,8 +130,8 @@ public sealed class SnowSimulation
         foreach (var removed in previousSurfaces.Where(surface => surface.Body is not null && !newById.ContainsKey(surface.Body.Value.Id)))
             ReleaseSurface(removed);
 
+        _looseSnow.RefreshRenderView();
         UpdateProfileView();
-        BuildLoosePatches();
     }
 
     /// <summary>
@@ -127,6 +141,7 @@ public sealed class SnowSimulation
     {
         if (!float.IsFinite(dt) || dt <= 0) return;
         dt = MathF.Min(dt, 0.05f);
+        _looseSnow.BeginFrame();
         var nextWind = FiniteWind(wind);
         if (_wind != nextWind)
         {
@@ -163,23 +178,20 @@ public sealed class SnowSimulation
         for (var i = 0; i < _flakes.Count; i++)
             AdvanceFlake(i, dt);
 
-        AdvanceParcels(dt);
+        _looseSnow.Step(dt, _wind, LandGranularSnow);
         UpdateProfileView();
-        BuildLoosePatches();
     }
 
     public void Clear()
     {
         foreach (var surface in _surfaces) Array.Clear(surface.Heights);
-        _parcels.Clear();
-        _loosePatches.Clear();
-        _patchGroups.Clear();
+        _looseSnow.Clear();
         _previousPointer = null;
         UpdateProfileView();
     }
 
     public float TotalSettledMass => _surfaces.Sum(surface => surface.Area);
-    public float TotalLooseMass => _parcels.Sum(parcel => parcel.Mass);
+    public float TotalLooseMass => _looseSnow.TotalMass;
 
     private int SampleCount(float width, int supportCount)
     {
@@ -192,7 +204,74 @@ public sealed class SnowSimulation
         var floor = new SurfaceState(null, SampleCount(Width, 1), IsFloor: true, floorWidth: Width, floorY: Height);
         _surfaces.Add(floor);
         _profileView.Add(floor.ToProfile(Width, Height));
+        RebuildSurfaceBuckets();
     }
+
+    private void RebuildBodyBuckets()
+    {
+        foreach (var bucket in _bodyBuckets) bucket.Clear();
+        for (var bodyIndex = 0; bodyIndex < _bodies.Count; bodyIndex++)
+        {
+            var body = _bodies[bodyIndex];
+            var first = BucketFor(body.Left);
+            var last = BucketFor(body.Right);
+            for (var bucket = first; bucket <= last; bucket++) _bodyBuckets[bucket].Add(bodyIndex);
+        }
+    }
+
+    private void RebuildSurfaceBuckets()
+    {
+        foreach (var bucket in _surfaceBuckets) bucket.Clear();
+        for (var surfaceIndex = 0; surfaceIndex < _surfaces.Count; surfaceIndex++)
+        {
+            var surface = _surfaces[surfaceIndex];
+            var left = surface.Body?.Left ?? 0;
+            var right = left + surface.Width;
+            for (var bucket = BucketFor(left); bucket <= BucketFor(right); bucket++)
+                _surfaceBuckets[bucket].Add(surfaceIndex);
+        }
+    }
+
+    private List<int> BodyCandidatesAt(float x) => BodyCandidatesInRange(x, x);
+
+    private List<int> BodyCandidatesInRange(float left, float right)
+    {
+        _bodyCandidates.Clear();
+        if (_bodies.Count == 0) return _bodyCandidates;
+        if (++_bodyCandidateGeneration == int.MaxValue)
+        {
+            Array.Clear(_bodyCandidateStamps);
+            _bodyCandidateGeneration = 1;
+        }
+        for (var bucket = BucketFor(left); bucket <= BucketFor(right); bucket++)
+        foreach (var index in _bodyBuckets[bucket])
+        {
+            if (_bodyCandidateStamps[index] == _bodyCandidateGeneration) continue;
+            _bodyCandidateStamps[index] = _bodyCandidateGeneration;
+            _bodyCandidates.Add(index);
+        }
+        return _bodyCandidates;
+    }
+
+    private List<int> SurfaceCandidatesInRange(float left, float right)
+    {
+        _surfaceCandidates.Clear();
+        if (++_surfaceCandidateGeneration == int.MaxValue)
+        {
+            Array.Clear(_surfaceCandidateStamps);
+            _surfaceCandidateGeneration = 1;
+        }
+        for (var bucket = BucketFor(left); bucket <= BucketFor(right); bucket++)
+        foreach (var index in _surfaceBuckets[bucket])
+        {
+            if (_surfaceCandidateStamps[index] == _surfaceCandidateGeneration) continue;
+            _surfaceCandidateStamps[index] = _surfaceCandidateGeneration;
+            _surfaceCandidates.Add(index);
+        }
+        return _surfaceCandidates;
+    }
+
+    private int BucketFor(float x) => Math.Clamp((int)MathF.Floor(x / 64) + 1, 0, _surfaceBuckets.Length - 1);
 
     private void UpdateProfileView()
     {
@@ -243,7 +322,7 @@ public sealed class SnowSimulation
         var radius = 0.65f + depth * depth * 1.65f;
         var x = NextRandom() * Width;
         var y = scattered ? NextRandom() * Height : -5;
-        for (var attempt = 0; attempt < 4 && _bodies.Any(body => body.Contains(new Vector2(x, y), radius)); attempt++)
+        for (var attempt = 0; attempt < 4 && BodyCandidatesAt(x).Any(index => _bodies[index].Contains(new Vector2(x, y), radius)); attempt++)
         {
             x = NextRandom() * Width;
             y = -5;
@@ -287,25 +366,35 @@ public sealed class SnowSimulation
 
     private (float Time, float X, SurfaceState Surface)? FirstSurfaceHit(Vector2 start, Vector2 end, float radius)
     {
-        if (end.Y <= start.Y) return null;
+        var delta = end - start;
+        if (delta.Y <= 0 && MathF.Abs(delta.X) < Epsilon) return null;
         (float Time, float X, SurfaceState Surface)? first = null;
-        foreach (var surface in _surfaces)
+        var minX = MathF.Min(start.X, end.X);
+        var maxX = MathF.Max(start.X, end.X);
+        foreach (var surfaceIndex in SurfaceCandidatesInRange(minX, maxX))
         {
+            var surface = _surfaces[surfaceIndex];
             var body = surface.Body;
             var left = body?.Left ?? 0;
-            var right = body?.Right ?? Width;
-            if (MathF.Max(start.X, end.X) < left || MathF.Min(start.X, end.X) > right) continue;
-            for (var sample = 0; sample <= 2; sample++)
+            var spanLeft = MathF.Max(0, minX - left);
+            var spanRight = MathF.Min(surface.Width, maxX - left);
+            if (spanLeft > spanRight) continue;
+            var begin = Math.Clamp((int)MathF.Floor(spanLeft / surface.Spacing), 0, surface.Heights.Length - 2);
+            var finish = Math.Clamp((int)MathF.Ceiling(spanRight / surface.Spacing), begin, surface.Heights.Length - 2);
+            for (var i = begin; i <= finish; i++)
             {
-                var t = sample * 0.5f;
-                var x = start.X + (end.X - start.X) * t;
-                if (x < left || x > right) continue;
-                var local = x - left;
-                var top = surface.BaseY(local) - surface.HeightAt(local);
-                var time = (top - radius - start.Y) / (end.Y - start.Y);
+                var x0 = i * surface.Spacing;
+                var x1 = x0 + surface.Spacing;
+                var top0 = surface.BaseY(x0) - surface.Heights[i];
+                var top1 = surface.BaseY(x1) - surface.Heights[i + 1];
+                var slope = (top1 - top0) / surface.Spacing;
+                var approach = delta.Y - slope * delta.X;
+                if (approach <= Epsilon) continue;
+                var time = (top0 + slope * (start.X - left - x0) - radius - start.Y) / approach;
                 if (time < 0 || time > 1 || first is not null && time >= first.Value.Time) continue;
-                if (!surface.IsExposedAt(local)) continue;
-                var hitX = start.X + (end.X - start.X) * time;
+                var hitX = start.X + delta.X * time;
+                var local = hitX - left;
+                if (local < x0 - 0.001f || local > x1 + 0.001f || !surface.IsExposedAt(local)) continue;
                 first = (time, hitX, surface);
             }
         }
@@ -315,8 +404,9 @@ public sealed class SnowSimulation
     private (float Time, Body Body, Vector2 Normal)? FirstBodyHit(Vector2 start, Vector2 end, float radius)
     {
         (float Time, Body Body, Vector2 Normal)? first = null;
-        foreach (var body in _bodies)
+        foreach (var bodyIndex in BodyCandidatesInRange(MathF.Min(start.X, end.X) - radius, MathF.Max(start.X, end.X) + radius))
         {
+            var body = _bodies[bodyIndex];
             if (MathF.Max(start.X, end.X) + radius < body.Left ||
                 MathF.Min(start.X, end.X) - radius > body.Right ||
                 MathF.Max(start.Y, end.Y) + radius < body.Top ||
@@ -353,8 +443,9 @@ public sealed class SnowSimulation
                 var suppression = 1f;
                 var boost = 0f;
                 var capacityBoost = 0f;
-                foreach (var body in _bodies)
+                foreach (var bodyIndex in BodyCandidatesAt(x))
                 {
+                    var body = _bodies[bodyIndex];
                     if (surface.Body?.Id == body.Id) continue;
                     if (VerticalSpan(body, x) is { } span && span.Top < baseY - 0.01f && span.Bottom > baseY - 20) exposed = false;
                     if (x >= body.Left && x <= body.Right && body.Top < baseY - 0.01f) sky = false;
@@ -423,54 +514,11 @@ public sealed class SnowSimulation
                 if (removed <= Epsilon) continue;
                 var direction = travel > 0.5f ? Vector2.Normalize(delta) : new Vector2(point.X < end.X ? -1 : 1, -0.15f);
                 var target = new Vector2(end.X + direction.X * (radius + 4), MathF.Min(point.Y, end.Y + direction.Y * (radius + 4)));
-                AddParcel(new Parcel(target, removed * surface.Spacing, removed, direction * (hard ? 125 : 55)));
+                _looseSnow.Add(removed * surface.Spacing, target, direction, (end, radius));
                 surface.Heights[i] -= removed;
             }
         }
-    }
-
-    private void AdvanceParcels(float dt)
-    {
-        for (var i = _parcels.Count - 1; i >= 0; i--)
-        {
-            var parcel = _parcels[i];
-            var velocity = new Vector2(parcel.Velocity.X + _wind.X * 60 * dt, MathF.Min(600, parcel.Velocity.Y + 420 * dt));
-            var end = parcel.Position + velocity * dt;
-            var hit = FirstSurfaceHit(parcel.Position, end, MathF.Max(1, parcel.Height * 0.35f));
-            var obstruction = FirstBodyHit(parcel.Position, end, MathF.Max(1, parcel.Height * 0.35f));
-            if (hit is { } landed && (obstruction is null || landed.Time <= obstruction.Value.Time))
-            {
-                var landedLocal = landed.X - (landed.Surface.Body?.Left ?? 0);
-                var leftover = landed.Surface.Deposit(landedLocal, parcel.Mass, snowfall: false, _wind.X);
-                if (leftover <= Epsilon) _parcels.RemoveAt(i);
-                else _parcels[i] = parcel with { Position = new Vector2(landed.X, landed.Surface.BaseY(landed.X - (landed.Surface.Body?.Left ?? 0)) - landed.Surface.HeightAt(landed.X - (landed.Surface.Body?.Left ?? 0)) - parcel.Height), Mass = leftover, Velocity = new Vector2(velocity.X * 0.3f, 0) };
-            }
-            else if (obstruction is { } blocked)
-            {
-                var body = blocked.Body;
-                var normal = blocked.Normal;
-                var padding = MathF.Max(parcel.Height * 0.5f, 2) + 0.25f;
-                var position = normal.X < 0
-                    ? new Vector2(body.Left - padding, end.Y)
-                    : normal.X > 0
-                        ? new Vector2(body.Right + padding, end.Y)
-                        : normal.Y < 0
-                            ? new Vector2(end.X, body.Top - padding)
-                            : new Vector2(end.X, body.Bottom + padding);
-                var velocityAfterHit = new Vector2(
-                    normal.X == 0 ? velocity.X : normal.X * MathF.Max(24, MathF.Abs(velocity.X) * 0.5f),
-                    normal.Y == 0 ? MathF.Max(velocity.Y, 50) : normal.Y * MathF.Max(24, MathF.Abs(velocity.Y) * 0.5f));
-                _parcels[i] = parcel with { Position = position, Velocity = velocityAfterHit };
-            }
-            else if (end.Y > Height + 4)
-            {
-                var floor = _surfaces.First(surface => surface.IsFloor);
-                var remainder = floor.Deposit(Math.Clamp(end.X, 0, Width), parcel.Mass, snowfall: false, _wind.X);
-                if (remainder <= Epsilon) _parcels.RemoveAt(i);
-                else _parcels[i] = parcel with { Position = new Vector2(Math.Clamp(end.X, 0, Width), Height - floor.HeightAt(Math.Clamp(end.X, 0, Width)) - parcel.Height), Mass = remainder, Velocity = Vector2.Zero };
-            }
-            else _parcels[i] = parcel with { Position = end, Velocity = velocity };
-        }
+        _looseSnow.Brush(start, end, radius, hard);
     }
 
     private void RemoveCoveredSnow(SurfaceState surface, Body body)
@@ -530,7 +578,6 @@ public sealed class SnowSimulation
                 var local = i * surface.Spacing;
                 var point = new Vector2(left + local, surface.BaseY(local) - height * 0.5f);
                 if (!newBody.Contains(point)) continue;
-                var removed = MathF.Min(height, 3f);
                 var target = direction.X < 0
                     ? new Vector2(newBody.Left - padding, point.Y)
                     : direction.X > 0
@@ -538,9 +585,8 @@ public sealed class SnowSimulation
                         : direction.Y < 0
                             ? new Vector2(point.X, newBody.Top - padding)
                             : new Vector2(point.X, newBody.Bottom + padding);
-                AddParcel(new Parcel(target, removed * surface.Spacing, removed,
-                    direction * 45 + new Vector2(_wind.X * 10, 60)));
-                surface.Heights[i] -= removed;
+                _looseSnow.Add(height * surface.Spacing, target, direction + _wind * 0.25f);
+                surface.Heights[i] = 0;
             }
         }
     }
@@ -553,8 +599,21 @@ public sealed class SnowSimulation
             var height = surface.Heights[i];
             if (height <= Epsilon) continue;
             var local = i * surface.Spacing;
-            AddParcel(new Parcel(new Vector2(left + local, surface.BaseY(local) - height * 0.5f), height * surface.Spacing, height, new Vector2(_wind.X * 12, 0)));
+            var point = new Vector2(left + local, Math.Clamp(surface.BaseY(local) - height * 0.5f,
+                _looseSnow.CellSize * 0.5f, Height - _looseSnow.CellSize * 0.5f));
+            _looseSnow.Add(height * surface.Spacing, point, new Vector2(_wind.X, 1));
+            surface.Heights[i] = 0;
         }
+    }
+
+    private (float Remaining, bool Blocked) LandGranularSnow(Vector2 start, Vector2 end, float mass)
+    {
+        var radius = _looseSnow.CellSize * 0.45f;
+        var hit = FirstSurfaceHit(start, end, radius);
+        if (hit is not { } contact) return (mass, false);
+        var local = contact.X - (contact.Surface.Body?.Left ?? 0);
+        var remaining = contact.Surface.Deposit(local, mass, snowfall: false, _wind.X);
+        return (remaining, true);
     }
 
     private static Vector2 LeadingFaceDirection(Body oldBody, Body newBody)
@@ -596,67 +655,6 @@ public sealed class SnowSimulation
         return new Vector2(0, start.Y < (body.Top + body.Bottom) * 0.5f ? -1 : 1);
     }
 
-    private void AddParcel(Parcel parcel)
-    {
-        if (!float.IsFinite(parcel.Mass) || parcel.Mass <= 0 || !IsFinite(parcel.Position) || !IsFinite(parcel.Velocity)) return;
-        if (_parcels.Count < MaximumParcels)
-        {
-            _parcels.Add(parcel);
-            return;
-        }
-
-        var nearest = 0;
-        var nearestDistance = float.PositiveInfinity;
-        for (var i = 0; i < _parcels.Count; i++)
-        {
-            var distance = Vector2.DistanceSquared(_parcels[i].Position, parcel.Position);
-            if (distance >= nearestDistance) continue;
-            nearest = i;
-            nearestDistance = distance;
-        }
-
-        var existing = _parcels[nearest];
-        var totalMass = existing.Mass + parcel.Mass;
-        var incomingShare = parcel.Mass / totalMass;
-        _parcels[nearest] = existing with
-        {
-            Position = Vector2.Lerp(existing.Position, parcel.Position, incomingShare),
-            Mass = totalMass,
-            Height = MathF.Max(existing.Height, parcel.Height),
-            Velocity = Vector2.Lerp(existing.Velocity, parcel.Velocity, incomingShare)
-        };
-    }
-
-    private void BuildLoosePatches()
-    {
-        _loosePatches.Clear();
-        _patchGroups.Clear();
-        foreach (var parcel in _parcels)
-        {
-            var point = parcel.Position;
-            if (point.X < -64 || point.X > Width + 64 || point.Y < -64 || point.Y > Height + 64) continue;
-            var column = Math.Clamp((int)MathF.Floor(point.X / 48), -2, 172);
-            var row = Math.Clamp((int)MathF.Floor(point.Y / 32), -2, 258);
-            var key = row * 176 + column;
-            if (!_patchGroups.ContainsKey(key) && _patchGroups.Count >= MaximumLoosePatches - 1)
-                key = int.MinValue;
-
-            var width = Math.Clamp(parcel.Mass / MathF.Max(1, parcel.Height), 4, 56);
-            if (_patchGroups.TryGetValue(key, out var group))
-                _patchGroups[key] = group.Include(point, parcel.Mass, width, parcel.Height);
-            else
-                _patchGroups.Add(key, new PatchAccumulator(point, parcel.Mass, width, parcel.Height));
-        }
-
-        foreach (var group in _patchGroups.Values)
-        {
-            var width = Math.Clamp(MathF.Max(group.MaxX - group.MinX,
-                group.TotalMass / MathF.Max(1, group.MaxHeight)), 5, 68);
-            var height = Math.Clamp(MathF.Max(group.MaxY - group.MinY, group.MaxHeight), 4, 22);
-            _loosePatches.Add(new SnowPatch(group.Center, width, height, 0.94f));
-        }
-    }
-
     private static (float Top, float Bottom)? VerticalSpan(Body body, float x)
     {
         var radius = body.CornerRadius;
@@ -690,45 +688,6 @@ public sealed class SnowSimulation
         return _randomState / (float)uint.MaxValue;
     }
 
-    private sealed record Parcel(Vector2 Position, float Mass, float Height, Vector2 Velocity);
-
-    private readonly record struct PatchAccumulator(
-        float WeightedX,
-        float WeightedY,
-        float TotalMass,
-        float MinX,
-        float MaxX,
-        float MinY,
-        float MaxY,
-        float MaxHeight)
-    {
-        public PatchAccumulator(Vector2 position, float mass, float width, float height)
-            : this(position.X * mass, position.Y * mass, mass,
-                position.X - width * 0.5f, position.X + width * 0.5f,
-                position.Y - Math.Clamp(height * 0.5f, 2, 12),
-                position.Y + Math.Clamp(height * 0.5f, 2, 12), height) { }
-
-        public Vector2 Center => TotalMass > Epsilon
-            ? new Vector2(WeightedX / TotalMass, WeightedY / TotalMass)
-            : Vector2.Zero;
-
-        public PatchAccumulator Include(Vector2 point, float mass, float width, float height)
-        {
-            var halfHeight = Math.Clamp(height * 0.5f, 2, 12);
-            return this with
-            {
-                WeightedX = WeightedX + point.X * mass,
-                WeightedY = WeightedY + point.Y * mass,
-                TotalMass = TotalMass + mass,
-                MinX = MathF.Min(MinX, point.X - width * 0.5f),
-                MaxX = MathF.Max(MaxX, point.X + width * 0.5f),
-                MinY = MathF.Min(MinY, point.Y - halfHeight),
-                MaxY = MathF.Max(MaxY, point.Y + halfHeight),
-                MaxHeight = MathF.Max(MaxHeight, height),
-            };
-        }
-    }
-
     private sealed class SurfaceState
     {
         public SurfaceState(Body? body, int count, bool IsFloor, float floorWidth = 1, float floorY = 0)
@@ -757,7 +716,9 @@ public sealed class SnowSimulation
                 var x = i * Spacing;
                 var limit = IsFloor ? 28f : body?.Kind == BodyKind.Taskbar ? 13f : 18f;
                 var taper = IsFloor ? 1 : Smooth(MathF.Min(1, MathF.Min(x, width - x) / 13));
-                var phase = body is null ? 0 : body.Value.Id * 0.17f;
+                // Reduce IDs before float conversion. Synthetic taskbar/decoration IDs are
+                // intentionally large; converting them directly erased the x-dependent lobes.
+                var phase = body is null ? 0 : (float)(((body.Value.Id % 4096) + 4096) % 4096) * 0.17f;
                 var lobe = 0.68f + MathF.Sin(x * 0.027f + phase) * 0.18f + MathF.Sin(x * 0.071f + phase * 2) * 0.09f + MathF.Sin(x * 0.13f + phase) * 0.05f;
                 Lobes[i] = lobe;
                 Capacity[i] = limit * taper;

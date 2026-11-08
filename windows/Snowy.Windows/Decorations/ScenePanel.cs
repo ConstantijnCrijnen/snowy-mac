@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Interop;
 using System.Windows.Media;
 using Snowy.Windows.Desktop;
 
@@ -139,8 +140,11 @@ internal sealed class SceneEditor : UserControl
     private Guid? selectedProp;
     private Guid? selectedLight;
     private int selectedAnchor;
+    private bool draggingSelection;
+    private Point? libraryPointerStart;
+    private string? suppressClickForAsset;
+    private double propGrabOffsetX;
     private double canvasScale = 1;
-    private Point dragOffset;
 
     private DesktopScreen? Screen => displays.SelectedItem is ScreenOption option
         ? host.Screens.FirstOrDefault(screen => screen.Id == option.Id)
@@ -204,8 +208,13 @@ internal sealed class SceneEditor : UserControl
         canvas.DragLeave += (_, _) => RemoveDragGhost();
         canvas.Drop += DropOnCanvas;
         canvas.SizeChanged += (_, _) => { FitCanvas(); DrawScene(); };
-        canvas.MouseMove += MoveSelected;
-        canvas.MouseLeftButtonUp += (_, _) => canvas.ReleaseMouseCapture();
+        canvas.PreviewMouseMove += MoveSelected;
+        canvas.MouseLeftButtonUp += (_, _) =>
+        {
+            draggingSelection = false;
+            canvas.ReleaseMouseCapture();
+        };
+        canvas.LostMouseCapture += (_, _) => draggingSelection = false;
         canvas.MouseLeftButtonDown += (_, e) =>
         {
             if (e.OriginalSource == canvas) { selectedProp = null; selectedLight = null; UpdateInspector(); }
@@ -237,8 +246,24 @@ internal sealed class SceneEditor : UserControl
             });
             panel.Children.Add(new TextBlock { Text = piece.Id, FontSize = 10, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Margin = new Thickness(2, 4, 2, 3), MinHeight = 28 });
             var card = new Button { Content = panel, Padding = new Thickness(4), Margin = new Thickness(3), Tag = piece.Id, ToolTip = "Drag onto the desktop" };
+            card.PreviewMouseLeftButtonDown += (_, e) =>
+            {
+                suppressClickForAsset = null;
+                libraryPointerStart = e.GetPosition(null);
+            };
+            card.PreviewMouseLeftButtonUp += (_, _) => libraryPointerStart = null;
+            card.PreviewKeyDown += (_, _) => suppressClickForAsset = null;
             card.PreviewMouseMove += BeginLibraryDrag;
-            card.Click += (_, _) => AddProp(piece.Id, new Point(0.5, .8));
+            card.Click += (_, _) =>
+            {
+                if (suppressClickForAsset == piece.Id)
+                {
+                    suppressClickForAsset = null;
+                    return;
+                }
+                if (Screen is { } screen)
+                    AddProp(piece.Id, new Point(DipWidth(screen) / 2, DipHeight(screen)), DecorationSupport.DesktopEdge);
+            };
             grid.Children.Add(card);
         }
         stack.Children.Add(grid);
@@ -247,28 +272,60 @@ internal sealed class SceneEditor : UserControl
 
     private void BeginLibraryDrag(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (sender is Button { Tag: string id } button && e.LeftButton == System.Windows.Input.MouseButtonState.Pressed)
+        if (sender is not Button { Tag: string id } button || e.LeftButton != System.Windows.Input.MouseButtonState.Pressed ||
+            libraryPointerStart is not { } start) return;
+        if (scene.Props.Count >= DecorationScene.MaxProps)
         {
-            var data = new DataObject("Snowy.DecorationAsset", id);
-            DragDrop.DoDragDrop(button, data, DragDropEffects.Copy);
+            status.Text = "A scene can hold up to 16 decorations.";
+            libraryPointerStart = null;
+            return;
         }
+        var current = e.GetPosition(null);
+        if (Math.Abs(current.X - start.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(current.Y - start.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+
+        libraryPointerStart = null;
+        var data = new DataObject("Snowy.DecorationAsset", id);
+        DragDrop.DoDragDrop(button, data, DragDropEffects.Copy);
     }
 
     private void DropOnCanvas(object sender, DragEventArgs e)
     {
         RemoveDragGhost();
-        if (e.Data.GetData("Snowy.DecorationAsset") is not string id || Screen is not { } screen || catalog.Find(id) is not { } piece) return;
-        var location = e.GetPosition(canvas);
-        var x = Math.Clamp((location.X - (canvas.ActualWidth - DipWidth(screen) * canvasScale) / 2) / (DipWidth(screen) * canvasScale), 0, 1);
-        AddProp(id, new Point(x, location.Y / Math.Max(1, canvas.ActualHeight)));
+        if (e.Data.GetData("Snowy.DecorationAsset") is not string id || Screen is not { } screen || catalog.Find(id) is not { })
+        {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+        if (!CanvasPointToDesktop(e.GetPosition(canvas), screen, out var point))
+        {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+        AddProp(id, point);
+        suppressClickForAsset = id;
+        e.Effects = DragDropEffects.Copy;
+        e.Handled = true;
     }
 
     private void UpdateDragGhost(object sender, DragEventArgs e)
     {
-        if (e.Data.GetData("Snowy.DecorationAsset") is not string id || catalog.Find(id) is not { } piece)
+        if (e.Data.GetData("Snowy.DecorationAsset") is not string id || catalog.Find(id) is not { } piece ||
+            scene.Props.Count >= DecorationScene.MaxProps)
         {
             RemoveDragGhost();
             e.Effects = DragDropEffects.None;
+            e.Handled = true;
+            if (scene.Props.Count >= DecorationScene.MaxProps) status.Text = "A scene can hold up to 16 decorations.";
+            return;
+        }
+        if (Screen is not { } screen || !CanvasPointToDesktop(e.GetPosition(canvas), screen, out var point))
+        {
+            RemoveDragGhost();
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
             return;
         }
         e.Effects = DragDropEffects.Copy;
@@ -276,14 +333,35 @@ internal sealed class SceneEditor : UserControl
         if (dragGhost is null)
         {
             dragGhost = new Image { Source = catalog.Image(id), Opacity = .58, IsHitTestVisible = false,
-                Width = piece.Width * 3 * canvasScale, Height = piece.Height * 3 * canvasScale };
+                Width = piece.Width * DecorationPlacement.PixelScale(screen) * canvasScale,
+                Height = piece.Height * DecorationPlacement.PixelScale(screen) * canvasScale };
             RenderOptions.SetBitmapScalingMode(dragGhost, BitmapScalingMode.NearestNeighbor);
             canvas.Children.Add(dragGhost);
         }
-        var location = e.GetPosition(canvas);
-        Canvas.SetLeft(dragGhost, location.X - dragGhost.Width / 2);
-        Canvas.SetTop(dragGhost, location.Y - dragGhost.Height / 2);
+        var support = DecorationPlacement.SupportAt(point, screen, HostBodies());
+        var placement = new PlacedDecoration(Guid.Empty, id, point.X / Math.Max(1, DipWidth(screen)), Support: support);
+        var frame = DecorationPlacement.Frame(placement, piece, screen, HostBodies());
+        var origin = CanvasOrigin(screen);
+        dragGhost.Width = frame.Width * canvasScale;
+        dragGhost.Height = frame.Height * canvasScale;
+        Canvas.SetLeft(dragGhost, origin.X + frame.Left * canvasScale);
+        Canvas.SetTop(dragGhost, origin.Y + frame.Top * canvasScale);
     }
+
+    private bool CanvasPointToDesktop(Point point, DesktopScreen screen, out Point desktopPoint)
+    {
+        var origin = CanvasOrigin(screen);
+        var x = (point.X - origin.X) / canvasScale;
+        var y = (point.Y - origin.Y) / canvasScale;
+        var width = DipWidth(screen);
+        var height = DipHeight(screen);
+        desktopPoint = new Point(Math.Clamp(x, 0, width), Math.Clamp(y, 0, height));
+        return x >= 0 && x <= width && y >= 0 && y <= height;
+    }
+
+    private Point CanvasOrigin(DesktopScreen screen) => new(
+        Math.Max(10, (canvas.ActualWidth - DipWidth(screen) * canvasScale) / 2),
+        Math.Max(10, (canvas.ActualHeight - DipHeight(screen) * canvasScale) / 2));
 
     private void RemoveDragGhost()
     {
@@ -330,14 +408,14 @@ internal sealed class SceneEditor : UserControl
         DrawScene();
     }
 
-    private void AddProp(string id, Point normalized)
+    private void AddProp(string id, Point point, DecorationSupport? supportOverride = null)
     {
         if (scene.Props.Count >= DecorationScene.MaxProps) { status.Text = "A scene can hold up to 16 decorations."; return; }
-        var piece = catalog.Find(id);
-        if (piece is null) return;
-        var support = HostBodies().Any(body => body.Kind == Snowy.Core.BodyKind.Taskbar && body.Top > DipHeight(Screen!.Value) * .6)
-            ? DecorationSupport.TaskbarTop : DecorationSupport.DesktopEdge;
-        var item = new PlacedDecoration(Guid.NewGuid(), id, Math.Clamp(normalized.X, .04, .96), Pushes: piece.PushesByDefault, Support: support);
+        if (Screen is not { } screen || catalog.Find(id) is not { } piece) return;
+        var bodies = HostBodies();
+        var support = supportOverride ?? DecorationPlacement.SupportAt(point, screen, bodies);
+        var item = new PlacedDecoration(Guid.NewGuid(), id, DecorationPlacement.NormalizeCenter(point.X, support, piece, 1, screen, bodies),
+            Pushes: piece.PushesByDefault, Support: support);
         scene = scene with { Props = [.. scene.Props, item] };
         selectedProp = item.Id;
         selectedLight = null;
@@ -377,8 +455,9 @@ internal sealed class SceneEditor : UserControl
         canvas.Children.Clear();
         var width = DipWidth(screen);
         var height = DipHeight(screen);
-        var originX = Math.Max(10, (canvas.ActualWidth - width * canvasScale) / 2);
-        var originY = Math.Max(10, (canvas.ActualHeight - height * canvasScale) / 2);
+        var origin = CanvasOrigin(screen);
+        var originX = origin.X;
+        var originY = origin.Y;
         canvas.Children.Add(new Border
         {
             Width = width * canvasScale,
@@ -423,13 +502,8 @@ internal sealed class SceneEditor : UserControl
     {
         var piece = catalog.Find(prop.AssetId);
         if (piece is null) return;
-        var taskbar = HostBodies().FirstOrDefault(body => body.Kind == Snowy.Core.BodyKind.Taskbar && body.Top > DipHeight(screen) * .6);
-        var scale = 3 * prop.Scale * canvasScale;
-        var width = piece.Width * scale;
-        var height = piece.Height * scale;
-        var center = prop.X * DipWidth(screen);
-        var top = prop.Support == DecorationSupport.TaskbarTop && taskbar.IsValid ? taskbar.Top - height / canvasScale : DipHeight(screen) - height / canvasScale;
-        var image = new Image { Source = catalog.Image(prop.AssetId), Width = width, Height = height,
+        var frame = DecorationPlacement.Frame(prop, piece, screen, HostBodies());
+        var image = new Image { Source = catalog.Image(prop.AssetId), Width = frame.Width * canvasScale, Height = frame.Height * canvasScale,
             Stretch = Stretch.Fill, SnapsToDevicePixels = true, Tag = prop.Id,
             ToolTip = prop.AssetId, Cursor = System.Windows.Input.Cursors.SizeAll };
         RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.NearestNeighbor);
@@ -437,13 +511,14 @@ internal sealed class SceneEditor : UserControl
         {
             selectedProp = prop.Id;
             selectedLight = null;
-            dragOffset = e.GetPosition(canvas);
-            canvas.CaptureMouse();
+            var point = CanvasPointToDesktop(e.GetPosition(canvas), screen, out var desktopPoint) ? desktopPoint : new Point(frame.CenterX, frame.Top);
+            propGrabOffsetX = point.X - frame.CenterX;
+            draggingSelection = canvas.CaptureMouse();
             UpdateInspector();
             e.Handled = true;
         };
-        Canvas.SetLeft(image, originX + (center - width / canvasScale / 2) * canvasScale);
-        Canvas.SetTop(image, originY + top * canvasScale);
+        Canvas.SetLeft(image, originX + frame.Left * canvasScale);
+        Canvas.SetTop(image, originY + frame.Top * canvasScale);
         canvas.Children.Add(image);
     }
 
@@ -471,7 +546,8 @@ internal sealed class SceneEditor : UserControl
         }
         for (var i = 0; i < light.Anchors.Count; i++)
         {
-            var point = DecorationService.ResolveAnchor(light.Anchors[i], screen, HostBodies());
+            var anchorIndex = i;
+            var point = DecorationService.ResolveAnchor(light.Anchors[anchorIndex], screen, HostBodies());
             var handle = new System.Windows.Shapes.Ellipse
             {
                 Width = 12, Height = 12, Fill = Brushes.White,
@@ -483,35 +559,38 @@ internal sealed class SceneEditor : UserControl
             {
                 selectedLight = light.Id;
                 selectedProp = null;
-                selectedAnchor = i;
-                dragOffset = e.GetPosition(canvas);
-                canvas.CaptureMouse();
+                selectedAnchor = anchorIndex;
+                draggingSelection = canvas.CaptureMouse();
                 UpdateInspector();
                 e.Handled = true;
             };
             Canvas.SetLeft(handle, originX + point.X * canvasScale - 6);
             Canvas.SetTop(handle, originY + point.Y * canvasScale - 6);
+            Panel.SetZIndex(handle, 20);
             canvas.Children.Add(handle);
         }
     }
 
     private void MoveSelected(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed || Screen is not { } screen ||
+        if (!draggingSelection || Screen is not { } screen ||
             (selectedProp is null && selectedLight is null)) return;
-        var location = e.GetPosition(canvas);
+        if (!CanvasPointToDesktop(e.GetPosition(canvas), screen, out var point)) return;
         var width = DipWidth(screen);
-        var height = DipHeight(screen);
-        var offsetX = Math.Max(10, (canvas.ActualWidth - width * canvasScale) / 2);
-        var offsetY = Math.Max(10, (canvas.ActualHeight - height * canvasScale) / 2);
-        var point = new Point(Math.Clamp((location.X - offsetX) / canvasScale, 0, width), Math.Clamp((location.Y - offsetY) / canvasScale, 0, height));
         if (selectedProp is { } propId)
         {
-            var props = scene.Props.Select(item => item.Id == propId ? item with
+            var oldProp = scene.Props.FirstOrDefault(item => item.Id == propId);
+            if (oldProp is null || catalog.Find(oldProp.AssetId) is not { } piece) return;
+            var targetPoint = new Point(Math.Clamp(point.X - propGrabOffsetX, 0, width), point.Y);
+            var bodies = HostBodies();
+            var support = DecorationPlacement.SupportAt(targetPoint, screen, bodies);
+            var updatedProp = oldProp with
             {
-                X = Math.Clamp(point.X / width, 0, 1),
-                Support = NearTaskbar(point, screen) ? DecorationSupport.TaskbarTop : DecorationSupport.DesktopEdge
-            } : item).ToList();
+                Support = support,
+                X = DecorationPlacement.NormalizeCenter(Math.Clamp(targetPoint.X, 0, width), support, piece,
+                    oldProp.Scale, screen, bodies)
+            };
+            var props = scene.Props.Select(item => item.Id == propId ? updatedProp : item).ToList();
             scene = scene with { Props = props };
             DrawScene();
             e.Handled = true;
@@ -542,11 +621,7 @@ internal sealed class SceneEditor : UserControl
             inspector.Children.Add(Text(prop.AssetId, 14, true));
             inspector.Children.Add(Text("Size", 12));
             var scale = new Slider { Minimum = .65, Maximum = 1.6, Value = prop.Scale, TickFrequency = .05, IsSnapToTickEnabled = false };
-            scale.ValueChanged += (_, _) =>
-            {
-                scene = scene with { Props = scene.Props.Select(item => item.Id == propId ? item with { Scale = scale.Value } : item).ToList() };
-                DrawScene();
-            };
+            scale.ValueChanged += (_, _) => UpdateProp(propId, item => item with { Scale = scale.Value });
             inspector.Children.Add(scale);
             var push = new CheckBox { Content = "Push with cursor", IsChecked = prop.Pushes, Margin = new Thickness(0, 7, 0, 8) };
             push.Checked += (_, _) => UpdateProp(propId, item => item with { Pushes = true });
@@ -614,15 +689,27 @@ internal sealed class SceneEditor : UserControl
 
     private void UpdateProp(Guid id, Func<PlacedDecoration, PlacedDecoration> update)
     {
-        scene = scene with { Props = scene.Props.Select(item => item.Id == id ? update(item) : item).ToList() };
+        if (Screen is not { } screen) return;
+        var bodies = HostBodies();
+        scene = scene with { Props = scene.Props.Select(item =>
+        {
+            if (item.Id != id) return item;
+            var updated = update(item);
+            if (catalog.Find(updated.AssetId) is { } piece)
+                updated = updated with { X = DecorationPlacement.Frame(updated, piece, screen, bodies).CenterX / Math.Max(1, DipWidth(screen)) };
+            return updated;
+        }).ToList() };
         DrawScene();
     }
 
-    private bool NearTaskbar(Point point, DesktopScreen screen) =>
-        HostBodies().Any(body => body.Kind == Snowy.Core.BodyKind.Taskbar && body.Top > DipHeight(screen) * .6 &&
-                                 point.X >= body.Left && point.X <= body.Right && Math.Abs(point.Y - body.Top) < 80);
-
-    private IReadOnlyList<Snowy.Core.Body> HostBodies() => Screen is { } screen ? service.GetAnchorBodies(screen, allowRefresh: true) : [];
+    private IReadOnlyList<Snowy.Core.Body> HostBodies()
+    {
+        if (Screen is not { } screen) return [];
+        var bodies = service.GetAnchorBodies(screen, allowRefresh: true);
+        var owner = Window.GetWindow(this);
+        var editorHandle = owner is null ? IntPtr.Zero : new WindowInteropHelper(owner).Handle;
+        return editorHandle == IntPtr.Zero ? bodies : bodies.Where(body => body.Id != editorHandle.ToInt64()).ToArray();
+    }
 
     private IReadOnlyList<Point> LightPolyline(HangingLight light, DesktopScreen screen)
     {

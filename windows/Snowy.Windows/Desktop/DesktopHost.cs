@@ -57,7 +57,7 @@ public sealed class DesktopHost : IDisposable
     private const int ReducedMotionFrameMilliseconds = 67;
     private const float WindowCornerDip = 8;
     private static readonly Brush SnowFill = CreateSnowFill();
-    private static readonly Pen SnowEdge = CreateSnowEdge();
+    private static readonly Pen SnowHighlight = CreateSnowHighlight();
     private readonly Func<DesktopOptions> _getOptions;
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _timer;
@@ -261,12 +261,19 @@ public sealed class DesktopHost : IDisposable
     {
         var windows = NativeTracker.VisibleWindows(_overlayHandles);
         var taskbars = NativeTracker.BottomTaskbars();
+        var nativeScreens = Forms.Screen.AllScreens;
         var changed = false;
         foreach (var runtime in _displays.Values)
         {
             var screen = runtime.Screen;
+            var nativeScreen = nativeScreens.FirstOrDefault(item =>
+                string.Equals(item.DeviceName, screen.Id, StringComparison.OrdinalIgnoreCase));
+            var workArea = nativeScreen is null
+                ? new PixelRect(screen.Left, screen.Top, screen.Left + screen.Width, screen.Top + screen.Height)
+                : ToPixelRect(nativeScreen.WorkingArea);
             var bodies = new List<Body>(Math.Min(MaxBodies, windows.Count + taskbars.Count));
             var masks = new List<Body>(windows.Count + taskbars.Count);
+            TrackedTaskbar? bottomTaskbar = null;
             foreach (var window in windows)
             {
                 if (!Intersects(window.Bounds, screen)) continue;
@@ -274,7 +281,8 @@ public sealed class DesktopHost : IDisposable
                 var body = new Body(window.Id, bounds.Position, bounds.Size,
                     window.IsSearch ? BodyKind.Search : BodyKind.Window, WindowCornerDip);
                 masks.Add(body);
-                if (window.HasSurface && bodies.Count < MaxBodies - taskbars.Count) bodies.Add(body);
+                var reservedBodySlots = Math.Min(MaxBodies, Math.Max(1, taskbars.Count));
+                if (window.HasSurface && bodies.Count < MaxBodies - reservedBodySlots) bodies.Add(body);
             }
             foreach (var taskbar in taskbars)
             {
@@ -282,11 +290,58 @@ public sealed class DesktopHost : IDisposable
                 var bounds = LocalBounds(taskbar.Bounds, screen);
                 var body = new Body(taskbar.Id, bounds.Position, bounds.Size, BodyKind.Taskbar, 0);
                 masks.Add(body);
-                if (IsBottomTaskbar(taskbar.Bounds, screen)) bodies.Add(body);
+                if (IsBottomTaskbar(taskbar.Bounds, screen) &&
+                    (bottomTaskbar is null ||
+                     taskbar.Bounds.Right - taskbar.Bounds.Left > bottomTaskbar.Value.Bounds.Right - bottomTaskbar.Value.Bounds.Left))
+                    bottomTaskbar = taskbar;
+            }
+
+            PixelRect? supportBounds = bottomTaskbar?.Bounds;
+            if (supportBounds is null && TryGetBottomTaskbarReservation(workArea, screen, out var reservedStrip))
+                supportBounds = reservedStrip;
+            if (supportBounds is { } taskbarBounds)
+            {
+                runtime.BottomTaskbarBodyId ??= bottomTaskbar?.Id ?? StableTaskbarBodyId(screen.Id);
+                var local = LocalBounds(taskbarBounds, screen);
+                var body = new Body(runtime.BottomTaskbarBodyId.Value, local.Position, local.Size, BodyKind.Taskbar, 0);
+                if (bodies.Count < MaxBodies) bodies.Add(body);
+                if (bottomTaskbar is null) masks.Add(body);
             }
             changed |= runtime.SetShellBodies(bodies, masks);
         }
         return changed;
+    }
+
+    private static PixelRect ToPixelRect(System.Drawing.Rectangle rectangle) =>
+        new(rectangle.Left, rectangle.Top, rectangle.Right, rectangle.Bottom);
+
+    private static bool TryGetBottomTaskbarReservation(PixelRect workArea, DesktopScreen screen,
+        out PixelRect taskbarBounds)
+    {
+        taskbarBounds = default;
+        var screenRight = screen.Left + screen.Width;
+        var screenBottom = screen.Top + screen.Height;
+        var tolerance = Math.Max(8, screen.Scale * 4);
+        var bottom = screenBottom - workArea.Bottom;
+        var minimumReservation = Math.Max(12, screen.Scale * 8);
+        var maximumReservation = Math.Min(256, Math.Max(48, screen.Height * 0.12));
+        if (Math.Abs(workArea.Left - screen.Left) > tolerance ||
+            Math.Abs(workArea.Right - screenRight) > tolerance ||
+            Math.Abs(workArea.Top - screen.Top) > tolerance ||
+            bottom < minimumReservation || bottom > maximumReservation) return false;
+
+        taskbarBounds = new PixelRect(screen.Left, workArea.Bottom, screenRight, screenBottom);
+        return true;
+    }
+
+    private static long StableTaskbarBodyId(string screenId)
+    {
+        const ulong offset = 14_695_981_039_346_656_037UL;
+        const ulong prime = 1_099_511_628_211UL;
+        ulong hash = offset;
+        foreach (var character in screenId.ToUpperInvariant())
+            hash = (hash ^ character) * prime;
+        return (long)(0x4000_0000_0000_0000UL | (hash & 0x3FFF_FFFF_FFFF_FFFFUL));
     }
 
     private void Render(DisplayRuntime runtime, DrawingContext canvas)
@@ -304,55 +359,301 @@ public sealed class DesktopHost : IDisposable
         {
             Debug.WriteLine($"Snowy frame callback failed ({error.GetType().Name}).");
         }
-        try { DrawSnow(canvas, runtime.Simulation); }
+        try { DrawSnow(canvas, runtime.Simulation, runtime.Bodies); }
         catch (Exception error) { Debug.WriteLine($"Snowy snow rendering failed ({error.GetType().Name})."); }
         finally { canvas.Pop(); }
     }
 
-    private static void DrawSnow(DrawingContext canvas, SnowSimulation simulation)
+    private static void DrawSnow(DrawingContext canvas, SnowSimulation simulation, IReadOnlyList<Body> bodies)
     {
         foreach (var profile in simulation.Profiles)
         {
             if (profile.Heights.Length < 2 || profile.Spacing <= 0) continue;
-            var hasSnow = false;
-            for (var i = 0; i < profile.Heights.Length; i++)
+            Body? support = null;
+            foreach (var body in bodies)
             {
-                if (profile.Heights[i] > 0.5f) { hasSnow = true; break; }
+                if (body.Id != profile.Id) continue;
+                support = body;
+                break;
             }
-            if (!hasSnow) continue;
+
             var geometry = new StreamGeometry();
+            var upper = new Point[profile.Heights.Length];
+            var lower = new Point[profile.Heights.Length];
+            for (var index = 0; index < profile.Heights.Length; index++)
+            {
+                var x = profile.X + index * profile.Spacing;
+                var baseY = support is { } body ? body.SurfaceY(x) : profile.Y;
+                var height = SafeHeight(profile.Heights[index]);
+                upper[index] = new Point(x, baseY - height);
+                lower[index] = new Point(x, baseY + 0.4);
+            }
+
+            var hasSnow = false;
             using (var path = geometry.Open())
             {
-                path.BeginFigure(new Point(profile.X, profile.Y - profile.Heights[0]), true, true);
-                for (var index = 1; index < profile.Heights.Length; index++)
-                    path.LineTo(new Point(profile.X + index * profile.Spacing,
-                        profile.Y - profile.Heights[index]), true, false);
-                var endX = profile.X + (profile.Heights.Length - 1) * profile.Spacing;
-                path.LineTo(new Point(endX, profile.Y + 1), true, false);
-                path.LineTo(new Point(profile.X, profile.Y + 1), true, false);
+                var start = 0;
+                while (start < profile.Heights.Length - 1)
+                {
+                    while (start < profile.Heights.Length - 1 &&
+                        Math.Max(SafeHeight(profile.Heights[start]), SafeHeight(profile.Heights[start + 1])) <= 0.05f)
+                        start++;
+                    if (start >= profile.Heights.Length - 1) break;
+
+                    var end = start + 1;
+                    while (end < profile.Heights.Length - 1 &&
+                        Math.Max(SafeHeight(profile.Heights[end]), SafeHeight(profile.Heights[end + 1])) > 0.05f)
+                        end++;
+
+                    path.BeginFigure(upper[start], true, true);
+                    AppendSmoothCurve(path, upper, start, end);
+                    path.LineTo(lower[end], true, false);
+                    AppendSmoothCurve(path, lower, end, start);
+                    hasSnow = true;
+                    start = end;
+                }
             }
+            if (!hasSnow) continue;
             geometry.Freeze();
-            canvas.DrawGeometry(SnowFill, SnowEdge, geometry);
+            canvas.DrawGeometry(SnowFill, null, geometry);
+
+            var highlight = CreateHighlightGeometry(profile, support);
+            if (highlight is not null) canvas.DrawGeometry(null, SnowHighlight, highlight);
         }
+
+        DrawLooseCells(canvas, simulation.LooseCells, simulation.LooseCellPitch);
+
         foreach (var flake in simulation.Flakes)
         {
             var alpha = (byte)Math.Clamp((int)(flake.Opacity * 245), 0, 245);
             canvas.DrawEllipse(FlakeBrushes[alpha], null, new Point(flake.Position.X, flake.Position.Y),
                 flake.Radius, flake.Radius);
         }
-        foreach (var patch in simulation.LoosePatches)
+    }
+
+    private static float SafeHeight(float height) =>
+        float.IsFinite(height) ? Math.Max(0, height) : 0;
+
+    private static void AppendSmoothCurve(StreamGeometryContext path, Point[] points, int first, int last)
+    {
+        if (first == last) return;
+        var step = first < last ? 1 : -1;
+        for (var index = first; index != last; index += step)
         {
-            if (patch.Width <= 0 || patch.Height <= 0) continue;
-            var rectangle = new Rect(patch.Position.X - patch.Width * 0.5,
-                patch.Position.Y - patch.Height * 0.5, patch.Width, patch.Height);
-            var opacity = Math.Clamp(patch.Opacity, 0, 1);
-            canvas.PushOpacity(opacity);
-            canvas.DrawRoundedRectangle(SnowFill, null, rectangle,
-                Math.Min(patch.Height * 0.45, patch.Width * 0.2),
-                Math.Min(patch.Height * 0.45, patch.Width * 0.2));
-            canvas.Pop();
+            var next = index + step;
+            var before = points[Math.Clamp(index - step, Math.Min(first, last), Math.Max(first, last))];
+            var start = points[index];
+            var end = points[next];
+            var after = points[Math.Clamp(next + step, Math.Min(first, last), Math.Max(first, last))];
+            var minimumY = Math.Min(start.Y, end.Y);
+            var maximumY = Math.Max(start.Y, end.Y);
+            var firstControl = new Point(
+                start.X + (end.X - before.X) / 6,
+                Math.Clamp(start.Y + (end.Y - before.Y) / 6, minimumY, maximumY));
+            var secondControl = new Point(
+                end.X - (after.X - start.X) / 6,
+                Math.Clamp(end.Y - (after.Y - start.Y) / 6, minimumY, maximumY));
+            path.BezierTo(firstControl, secondControl, end, true, true);
         }
     }
+
+    private static Geometry? CreateHighlightGeometry(SnowProfile profile, Body? support)
+    {
+        const float MinimumHighlightHeight = 0.65f;
+        var geometry = new StreamGeometry();
+        var hasSegments = false;
+        var heights = profile.Heights;
+        var upper = new Point[heights.Length];
+        for (var index = 0; index < heights.Length; index++)
+        {
+            var x = profile.X + index * profile.Spacing;
+            var baseY = support is { } body ? body.SurfaceY(x) : profile.Y;
+            upper[index] = new Point(x, baseY - SafeHeight(heights[index]));
+        }
+        using (var path = geometry.Open())
+        {
+            var start = 0;
+            while (start < heights.Length - 1)
+            {
+                while (start < heights.Length - 1 &&
+                    Math.Max(SafeHeight(heights[start]), SafeHeight(heights[start + 1])) < MinimumHighlightHeight) start++;
+                if (start >= heights.Length - 1) break;
+
+                var end = start + 1;
+                while (end < heights.Length - 1 &&
+                    Math.Max(SafeHeight(heights[end]), SafeHeight(heights[end + 1])) >= MinimumHighlightHeight) end++;
+                path.BeginFigure(upper[start], false, false);
+                AppendSmoothCurve(path, upper, start, end);
+                hasSegments = true;
+                start = end;
+            }
+        }
+        if (!hasSegments) return null;
+        geometry.Freeze();
+        return geometry;
+    }
+
+    private static void DrawLooseCells(DrawingContext canvas, IReadOnlyList<SnowCell> cells, float pitch)
+    {
+        if (cells.Count == 0 || !float.IsFinite(pitch) || pitch <= 0) return;
+        const float contourLevel = 0.2f;
+        // Cell extents may be clipped at the right and bottom monitor edges. Use the
+        // nominal coarse grid pitch for contour topology, not the first cell's extent.
+        var samples = new Dictionary<(int X, int Y), float>(cells.Count);
+        var squares = new HashSet<(int X, int Y)>(cells.Count * 4);
+        foreach (var cell in cells)
+        {
+            if (!float.IsFinite(cell.Center.X) || !float.IsFinite(cell.Center.Y) ||
+                !float.IsFinite(cell.Fill) || !float.IsFinite(cell.Size.X) || !float.IsFinite(cell.Size.Y) ||
+                cell.Size.X <= 0 || cell.Size.Y <= 0) continue;
+            var x = (int)MathF.Round((cell.Center.X - cell.Size.X * 0.5f) / pitch);
+            var y = (int)MathF.Round((cell.Center.Y - cell.Size.Y * 0.5f) / pitch);
+            var key = (x, y);
+            samples[key] = Math.Max(samples.GetValueOrDefault(key), Math.Clamp(cell.Fill, 0, 1));
+            squares.Add((x - 1, y - 1));
+            squares.Add((x, y - 1));
+            squares.Add((x - 1, y));
+            squares.Add((x, y));
+        }
+        if (samples.Count == 0) return;
+
+        // Stitch marching-squares crossings into continuous loops before smoothing. This
+        // keeps the mass connected and avoids drawing one angular rounded blob per cell.
+        var segments = new List<ContourSegment>(squares.Count * 2);
+        var positions = new Dictionary<ContourEdge, Point>(squares.Count * 2);
+        foreach (var (x, y) in squares)
+        {
+            var va = samples.GetValueOrDefault((x, y));
+            var vb = samples.GetValueOrDefault((x + 1, y));
+            var vc = samples.GetValueOrDefault((x + 1, y + 1));
+            var vd = samples.GetValueOrDefault((x, y + 1));
+            var bits = (va >= contourLevel ? 1 : 0) | (vb >= contourLevel ? 2 : 0) |
+                (vc >= contourLevel ? 4 : 0) | (vd >= contourLevel ? 8 : 0);
+            if (bits is 0 or 15) continue;
+
+            var a = new Point((x + 0.5) * pitch, (y + 0.5) * pitch);
+            var b = new Point(a.X + pitch, a.Y);
+            var c = new Point(a.X + pitch, a.Y + pitch);
+            var d = new Point(a.X, a.Y + pitch);
+            var top = new ContourEdge(false, x, y);
+            var right = new ContourEdge(true, x + 1, y);
+            var bottom = new ContourEdge(false, x, y + 1);
+            var left = new ContourEdge(true, x, y);
+
+            switch (bits)
+            {
+                case 1: AddContourSegment(segments, positions, top, left, ContourEdgePoint(a, b, va, vb, contourLevel), ContourEdgePoint(d, a, vd, va, contourLevel)); break;
+                case 2: AddContourSegment(segments, positions, right, top, ContourEdgePoint(b, c, vb, vc, contourLevel), ContourEdgePoint(a, b, va, vb, contourLevel)); break;
+                case 3: AddContourSegment(segments, positions, right, left, ContourEdgePoint(b, c, vb, vc, contourLevel), ContourEdgePoint(d, a, vd, va, contourLevel)); break;
+                case 4: AddContourSegment(segments, positions, bottom, right, ContourEdgePoint(c, d, vc, vd, contourLevel), ContourEdgePoint(b, c, vb, vc, contourLevel)); break;
+                case 5:
+                    AddContourSegment(segments, positions, top, left, ContourEdgePoint(a, b, va, vb, contourLevel), ContourEdgePoint(d, a, vd, va, contourLevel));
+                    AddContourSegment(segments, positions, bottom, right, ContourEdgePoint(c, d, vc, vd, contourLevel), ContourEdgePoint(b, c, vb, vc, contourLevel));
+                    break;
+                case 6: AddContourSegment(segments, positions, top, bottom, ContourEdgePoint(a, b, va, vb, contourLevel), ContourEdgePoint(c, d, vc, vd, contourLevel)); break;
+                case 7: AddContourSegment(segments, positions, left, bottom, ContourEdgePoint(d, a, vd, va, contourLevel), ContourEdgePoint(c, d, vc, vd, contourLevel)); break;
+                case 8: AddContourSegment(segments, positions, left, bottom, ContourEdgePoint(d, a, vd, va, contourLevel), ContourEdgePoint(c, d, vc, vd, contourLevel)); break;
+                case 9: AddContourSegment(segments, positions, top, bottom, ContourEdgePoint(a, b, va, vb, contourLevel), ContourEdgePoint(c, d, vc, vd, contourLevel)); break;
+                case 10:
+                    AddContourSegment(segments, positions, top, right, ContourEdgePoint(a, b, va, vb, contourLevel), ContourEdgePoint(b, c, vb, vc, contourLevel));
+                    AddContourSegment(segments, positions, left, bottom, ContourEdgePoint(d, a, vd, va, contourLevel), ContourEdgePoint(c, d, vc, vd, contourLevel));
+                    break;
+                case 11: AddContourSegment(segments, positions, right, bottom, ContourEdgePoint(b, c, vb, vc, contourLevel), ContourEdgePoint(c, d, vc, vd, contourLevel)); break;
+                case 12: AddContourSegment(segments, positions, right, left, ContourEdgePoint(b, c, vb, vc, contourLevel), ContourEdgePoint(d, a, vd, va, contourLevel)); break;
+                case 13: AddContourSegment(segments, positions, top, right, ContourEdgePoint(a, b, va, vb, contourLevel), ContourEdgePoint(b, c, vb, vc, contourLevel)); break;
+                case 14: AddContourSegment(segments, positions, top, left, ContourEdgePoint(a, b, va, vb, contourLevel), ContourEdgePoint(d, a, vd, va, contourLevel)); break;
+            }
+        }
+
+        if (segments.Count == 0) return;
+        var adjacency = new Dictionary<ContourEdge, List<int>>(positions.Count);
+        for (var index = 0; index < segments.Count; index++)
+        {
+            AddContourAdjacency(adjacency, segments[index].Start, index);
+            AddContourAdjacency(adjacency, segments[index].End, index);
+        }
+
+        var geometry = new StreamGeometry { FillRule = FillRule.EvenOdd };
+        var visited = new bool[segments.Count];
+        using (var path = geometry.Open())
+        {
+            for (var index = 0; index < segments.Count; index++)
+            {
+                if (visited[index]) continue;
+                var firstEdge = segments[index].Start;
+                var currentEdge = segments[index].End;
+                var points = new List<Point> { positions[firstEdge], positions[currentEdge] };
+                visited[index] = true;
+                var steps = 0;
+                while (currentEdge != firstEdge && steps++ <= segments.Count)
+                {
+                    if (!adjacency.TryGetValue(currentEdge, out var touching)) break;
+                    var nextSegment = -1;
+                    foreach (var candidate in touching)
+                    {
+                        if (visited[candidate]) continue;
+                        nextSegment = candidate;
+                        break;
+                    }
+                    if (nextSegment < 0) break;
+                    visited[nextSegment] = true;
+                    var segment = segments[nextSegment];
+                    currentEdge = segment.Start == currentEdge ? segment.End : segment.Start;
+                    points.Add(positions[currentEdge]);
+                }
+                if (currentEdge != firstEdge || points.Count < 4) continue;
+                points.RemoveAt(points.Count - 1);
+                AppendClosedSmoothContour(path, points);
+            }
+        }
+        geometry.Freeze();
+        canvas.DrawGeometry(SnowFill, null, geometry);
+    }
+
+    private static Point ContourEdgePoint(Point start, Point end, float startValue, float endValue, float level)
+    {
+        var delta = endValue - startValue;
+        var fraction = Math.Abs(delta) < 0.0001f ? 0.5 : Math.Clamp((level - startValue) / delta, 0, 1);
+        return new Point(start.X + (end.X - start.X) * fraction,
+            start.Y + (end.Y - start.Y) * fraction);
+    }
+
+    private static void AddContourSegment(List<ContourSegment> segments, Dictionary<ContourEdge, Point> positions,
+        ContourEdge start, ContourEdge end, Point startPoint, Point endPoint)
+    {
+        positions.TryAdd(start, startPoint);
+        positions.TryAdd(end, endPoint);
+        segments.Add(new ContourSegment(start, end));
+    }
+
+    private static void AddContourAdjacency(Dictionary<ContourEdge, List<int>> adjacency, ContourEdge edge, int segment)
+    {
+        if (!adjacency.TryGetValue(edge, out var touching))
+            adjacency[edge] = touching = new List<int>(2);
+        touching.Add(segment);
+    }
+
+    private static void AppendClosedSmoothContour(StreamGeometryContext path, IReadOnlyList<Point> points)
+    {
+        path.BeginFigure(points[0], true, true);
+        for (var index = 0; index < points.Count; index++)
+        {
+            var previous = points[(index + points.Count - 1) % points.Count];
+            var start = points[index];
+            var end = points[(index + 1) % points.Count];
+            var after = points[(index + 2) % points.Count];
+            var firstControl = new Point(
+                start.X + (end.X - previous.X) / 6,
+                start.Y + (end.Y - previous.Y) / 6);
+            var secondControl = new Point(
+                end.X - (after.X - start.X) / 6,
+                end.Y - (after.Y - start.Y) / 6);
+            path.BezierTo(firstControl, secondControl, end, true, true);
+        }
+    }
+
+    private readonly record struct ContourEdge(bool Vertical, int X, int Y);
+    private readonly record struct ContourSegment(ContourEdge Start, ContourEdge End);
 
     private static Brush CreateSnowFill()
     {
@@ -362,11 +663,11 @@ public sealed class DesktopHost : IDisposable
         return brush;
     }
 
-    private static Pen CreateSnowEdge()
+    private static Pen CreateSnowHighlight()
     {
-        var brush = new SolidColorBrush(Color.FromArgb(238, 255, 255, 255));
+        var brush = new SolidColorBrush(Color.FromArgb(86, 255, 255, 255));
         brush.Freeze();
-        var pen = new Pen(brush, 1.1);
+        var pen = new Pen(brush, 0.65);
         pen.Freeze();
         return pen;
     }
@@ -421,7 +722,8 @@ public sealed class DesktopHost : IDisposable
         var nearBottom = Math.Abs(rect.Bottom - (screen.Top + screen.Height)) <= Math.Max(24, screen.Height * 0.04);
         var width = rect.Right - rect.Left;
         var visibleHeight = Math.Min(rect.Bottom, screen.Top + screen.Height) - Math.Max(rect.Top, screen.Top);
-        return nearBottom && width >= screen.Width * 0.55 && visibleHeight >= 12 && width > (rect.Bottom - rect.Top) * 2;
+        return nearBottom && width >= screen.Width * 0.55 &&
+            visibleHeight >= Math.Max(12, screen.Scale * 8) && width > (rect.Bottom - rect.Top) * 2;
     }
 
     private static (Vector2 Position, Vector2 Size) LocalBounds(PixelRect rect, DesktopScreen screen)
@@ -477,6 +779,7 @@ public sealed class DesktopHost : IDisposable
         public IReadOnlyList<Body> ShellBodies { get; private set; } = Array.Empty<Body>();
         private IReadOnlyList<Body> _masks = Array.Empty<Body>();
         public IReadOnlyList<Body> Bodies { get; private set; } = Array.Empty<Body>();
+        public long? BottomTaskbarBodyId { get; set; }
         public bool Visible { get; set; }
         public float DeltaSeconds { get; private set; }
         public Vector2? Pointer { get; private set; }
@@ -568,12 +871,22 @@ public sealed class DesktopHost : IDisposable
         }
     }
 
-    private sealed class OverlayCanvas(DesktopHost host, DisplayRuntime runtime) : FrameworkElement
+    private sealed class OverlayCanvas : FrameworkElement
     {
+        private readonly DesktopHost _host;
+        private readonly DisplayRuntime _runtime;
+
+        public OverlayCanvas(DesktopHost host, DisplayRuntime runtime)
+        {
+            _host = host;
+            _runtime = runtime;
+            RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.NearestNeighbor);
+        }
+
         protected override void OnRender(DrawingContext drawingContext)
         {
             base.OnRender(drawingContext);
-            host.Render(runtime, drawingContext);
+            _host.Render(_runtime, drawingContext);
         }
     }
 

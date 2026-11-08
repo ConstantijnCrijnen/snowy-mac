@@ -13,7 +13,8 @@ public enum AnchorEdge { Top, Right, Bottom, Left }
 public sealed record DecorationPiece(string Id, string Name, int Width, int Height, bool PushesByDefault, int SolidBottom);
 public sealed record PlacedDecoration(Guid Id, string AssetId, double X, double Scale = 1,
     bool Pushes = true, DecorationSupport Support = DecorationSupport.DesktopEdge);
-public sealed record LightAnchor(double X, double Y, long? BodyId = null, AnchorEdge? Edge = null, double Fraction = 0);
+public sealed record LightAnchor(double X, double Y, long? BodyId = null, AnchorEdge? Edge = null,
+    double Fraction = 0, bool PersistBodyId = false);
 public sealed record HangingLight(Guid Id, List<LightAnchor> Anchors, LightPalette Palette = LightPalette.Classic, double Slack = .22);
 public sealed record DecorationScene(List<PlacedDecoration> Props, List<HangingLight> Lights)
 {
@@ -45,6 +46,7 @@ public sealed record DecorationScene(List<PlacedDecoration> Props, List<HangingL
     private static bool IsValidAnchor(LightAnchor anchor) =>
         double.IsFinite(anchor.X) && double.IsFinite(anchor.Y) && double.IsFinite(anchor.Fraction) &&
         anchor.X is >= 0 and <= 1 && anchor.Y is >= 0 and <= 1 && anchor.Fraction is >= 0 and <= 1 &&
+        (!anchor.PersistBodyId || anchor.BodyId is > 0) &&
         (anchor.BodyId is null || anchor.Edge is not null && Enum.IsDefined(anchor.Edge.Value)) &&
         (anchor.Edge is null || Enum.IsDefined(anchor.Edge.Value));
 }

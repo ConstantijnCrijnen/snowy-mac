@@ -34,11 +34,13 @@ public readonly record struct Body(
 
     public bool Contains(Vector2 point, float padding = 0)
     {
+        padding = MathF.Max(0, float.IsFinite(padding) ? padding : 0);
         if (point.X < Left - padding || point.X > Right + padding ||
             point.Y < Top - padding || point.Y > Bottom + padding) return false;
-        var radius = Math.Clamp(CornerRadius, 0, MathF.Min(Size.X, Size.Y) * 0.5f) + padding;
-        var cx = Math.Clamp(point.X, Left + CornerRadius, Right - CornerRadius);
-        var cy = Math.Clamp(point.Y, Top + CornerRadius, Bottom - CornerRadius);
+        var corner = Math.Clamp(CornerRadius, 0, MathF.Min(Size.X, Size.Y) * 0.5f);
+        var radius = corner + padding;
+        var cx = Math.Clamp(point.X, Left + corner, Right - corner);
+        var cy = Math.Clamp(point.Y, Top + corner, Bottom - corner);
         var dx = point.X - cx;
         var dy = point.Y - cy;
         return dx * dx + dy * dy <= radius * radius;
@@ -47,8 +49,8 @@ public readonly record struct Body(
 
 public readonly record struct Flake(Vector2 Position, float Radius, float Opacity);
 
-/// <summary>A merged, short lived snow slab shedding through the scene.</summary>
-public readonly record struct SnowPatch(Vector2 Position, float Width, float Height, float Opacity);
+/// <summary>A bounded uniform-grid sample of connected loose snow for contour rendering.</summary>
+public readonly record struct SnowCell(Vector2 Center, Vector2 Size, float Fill);
 
 /// <summary>Height samples are measured upward from the body's rounded top edge, in DIPs.</summary>
 public sealed record SnowProfile(float X, float Y, float Spacing, float[] Heights)

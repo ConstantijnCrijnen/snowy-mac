@@ -12,6 +12,9 @@ var cases = new (string Name, Action Run)[]
     ("moving windows push covered snow toward either leading side", MovingWindowPushesBothWays),
     ("loose snow rebounds from a window wall on its entry side", ParcelReboundsFromRightWall),
     ("the snow cap continues falling after a surface reaches its limit", SnowfallContinuesAtCapacity),
+    ("large synthetic decoration IDs retain a varied cap silhouette", LargeDecorationIdsKeepLobes),
+    ("loose snow remains represented while in flight", PushedSnowKeepsVisibleMass),
+    ("oversized rounded body corners remain safe and consistent", OversizedBodyCornersAreClamped),
 };
 
 foreach (var test in cases)
@@ -86,8 +89,8 @@ static void WindShadowDoesNotBlockSweeping()
     snow.Step(0.05f, Snowfall.Flurry, new Vector2(1, 0), new Vector2(worldX, profile.Y - before * 0.5f), SnowTool.Shovel, false);
     Check(At(Profile(snow, 1), 460) < before, "The shovel must still remove snow from a wind shadow.");
     Check(snow.TotalLooseMass > 0, "Swept snow must remain in the moving material field.");
-    Check(snow.LoosePatches.Count > 0 && snow.LoosePatches.Count <= 512,
-        "Loose snow must remain visible in a bounded set of cohesive render patches.");
+    Check(snow.LooseCells.Count > 0 && snow.LooseCells.Count <= 4096 && snow.LooseCellPitch > 0,
+        "Loose snow must remain visible in a bounded connected render grid.");
 }
 
 static void DecorationsCatchSnow()
@@ -136,10 +139,10 @@ static void AssertLeadingPush(float startingX, float targetX, bool expectRight)
     snow.SetBodies(new[] { support, movedWindow });
     Check(snow.TotalLooseMass > 0, "The moving window should dislodge snow it sweeps through.");
     if (expectRight)
-        Check(snow.LoosePatches.Any(patch => patch.Position.X > targetX + movedWindow.Size.X),
+        Check(snow.LooseCells.Any(cell => cell.Center.X > targetX + movedWindow.Size.X),
             "Rightward motion should push snow beyond the right boundary.");
     else
-        Check(snow.LoosePatches.Any(patch => patch.Position.X < targetX),
+        Check(snow.LooseCells.Any(cell => cell.Center.X < targetX),
             "Leftward motion should push snow beyond the left boundary.");
 }
 
@@ -155,11 +158,11 @@ static void ParcelReboundsFromRightWall()
     var newMover = oldMover with { Position = new Vector2(350, 240) };
     snow.SetBodies(new[] { support, wall, oldMover });
     snow.SetBodies(new[] { support, wall, newMover });
-    Check(snow.LoosePatches.Count > 0 && snow.LoosePatches.Min(patch => patch.Position.X) < newMover.Left,
+    Check(snow.LooseCells.Count > 0 && snow.LooseCells.Min(cell => cell.Center.X) < newMover.Left,
         "The leftward-moving window should eject material toward the nearby wall.");
 
-    snow.Step(0.05f, Snowfall.Flurry, Vector2.Zero, null, SnowTool.Glove, false);
-    Check(snow.LoosePatches.Any(patch => patch.Position.X > wall.Right),
+    Advance(snow, 20);
+    Check(snow.LooseCells.Any(cell => cell.Center.X > wall.Right),
         "Material arriving from the wall's right side should rebound to that side.");
 }
 
@@ -172,6 +175,37 @@ static void SnowfallContinuesAtCapacity()
     var flakeCount = snow.Flakes.Count;
     Advance(snow, 40);
     Check(snow.Flakes.Count == flakeCount && flakeCount > 0, "Snowfall particles continue at the cap.");
+}
+
+static void LargeDecorationIdsKeepLobes()
+{
+    var snow = new SnowSimulation(700, 500);
+    snow.SetBodies(new[] { new Body(8_000_000_000_000_123, new Vector2(40, 280), new Vector2(620, 100), BodyKind.Decoration, 0) });
+    Advance(snow, 900);
+    var heights = Profile(snow, 8_000_000_000_000_123).Heights;
+    Check(heights.Max() - heights.Min() > 0.25f,
+        "A large decoration ID must not erase the spatial variation in the snow cap.");
+}
+
+static void PushedSnowKeepsVisibleMass()
+{
+    var snow = new SnowSimulation(600, 500);
+    var support = new Body(1, new Vector2(0, 300), new Vector2(600, 180));
+    snow.SetBodies(new[] { support });
+    Advance(snow, 900);
+    var before = snow.TotalSettledMass;
+    snow.Step(0.05f, Snowfall.Flurry, Vector2.Zero, new Vector2(300, 280), SnowTool.Shovel, false);
+    Check(snow.TotalLooseMass > 0 && snow.LooseCells.Count > 0,
+        "Swept mass must have a visible cellular representation while it moves.");
+    Check(snow.TotalSettledMass < before,
+        "Sweeping should take mass off the profile and move it into the field.");
+}
+
+static void OversizedBodyCornersAreClamped()
+{
+    var body = new Body(99, Vector2.Zero, new Vector2(8, 8), BodyKind.Decoration, 100);
+    Check(body.Contains(new Vector2(4, 4)), "A tiny body should contain its center after radius clamping.");
+    Check(!body.Contains(new Vector2(8, 8)), "The clamped rounded hit box should not include the distant corner.");
 }
 
 static void Advance(SnowSimulation simulation, int frames)

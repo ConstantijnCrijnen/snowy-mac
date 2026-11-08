@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Snowy.Windows.Desktop;
 
 namespace Snowy.Windows.Decorations;
 
@@ -71,45 +72,52 @@ public sealed class DecorationCatalog
         var converted = new FormatConvertedBitmap(bitmap, PixelFormats.Pbgra32, null, 0);
         var pixels = new byte[converted.PixelWidth * converted.PixelHeight * 4];
         converted.CopyPixels(pixels, converted.PixelWidth * 4, 0);
-        var bands = new List<(int X, int Y, int Width, int Height)>();
-        for (var band = 0; band < 3; band++)
+        var tops = Enumerable.Repeat(converted.PixelHeight, converted.PixelWidth).ToArray();
+        var bottoms = new int[converted.PixelWidth];
+        for (var y = 0; y < converted.PixelHeight; y++)
+        for (var x = 0; x < converted.PixelWidth; x++)
         {
-            var left = band * converted.PixelWidth / 3;
-            var right = (band + 1) * converted.PixelWidth / 3;
-            if (band == 2) right = converted.PixelWidth;
-            var top = converted.PixelHeight;
-            var bottom = -1;
-            var minX = right;
-            var maxX = left - 1;
-            for (var y = 0; y < converted.PixelHeight; y++)
-            for (var x = left; x < right; x++)
-            {
-                if (pixels[(y * converted.PixelWidth + x) * 4 + 3] == 0) continue;
-                top = Math.Min(top, y);
-                bottom = Math.Max(bottom, y);
-                minX = Math.Min(minX, x);
-                maxX = Math.Max(maxX, x);
-            }
-            if (bottom >= top && maxX >= minX)
-                bands.Add((minX, top, maxX - minX + 1, bottom - top + 1));
+            if (pixels[(y * converted.PixelWidth + x) * 4 + 3] == 0) continue;
+            tops[x] = Math.Min(tops[x], y);
+            bottoms[x] = y + 1;
         }
-        return bands;
+        var bands = new List<(int X, int Y, int Width, int Height)>();
+        var bandCount = Math.Min(6, Math.Max(1, converted.PixelWidth / 4));
+        for (var band = 0; band < bandCount; band++)
+        {
+            var left = converted.PixelWidth * band / bandCount;
+            var right = converted.PixelWidth * (band + 1) / bandCount;
+            while (left < right && bottoms[left] == 0) left++;
+            while (right > left && bottoms[right - 1] == 0) right--;
+            if (left >= right) continue;
+            var top = tops[left..right].Max();
+            var bottom = bottoms[left..right].Min();
+            if (bottom > top) bands.Add((left, top, right - left, bottom - top));
+        }
+        return bands.OrderByDescending(band => band.Width).ThenBy(band => band.Y).ToList();
     }
 
-    public DecorationScene CreatePreset(DecorationPreset preset, double screenWidth, bool taskbarAtBottom)
+    public DecorationScene CreatePreset(DecorationPreset preset, DesktopScreen screen, IReadOnlyList<Snowy.Core.Body> bodies)
     {
         var pieces = ForPreset(preset);
-        var nativeWidth = pieces.Sum(item => item.Width * 3.0) + Math.Max(0, pieces.Count - 1) * 11;
-        var left = 18.0;
-        if (left + nativeWidth > screenWidth - 18) left = Math.Max(0, (screenWidth - nativeWidth) / 2);
+        var taskbarAtBottom = DecorationPlacement.BottomTaskbar(bodies).HasValue;
+        var support = taskbarAtBottom ? DecorationSupport.TaskbarTop : DecorationSupport.DesktopEdge;
+        var rail = DecorationPlacement.RailFor(support, screen, bodies);
+        var screenScale = float.IsFinite(screen.Scale) ? Math.Clamp(screen.Scale, .5, 8) : 1;
+        var pixelScale = DecorationPlacement.PixelScale(screen);
+        var gap = 11 / screenScale;
+        var nativeWidth = pieces.Sum(item => item.Width * pixelScale) + Math.Max(0, pieces.Count - 1) * gap;
+        var left = rail.Left + Math.Max(0, (rail.Right - rail.Left - nativeWidth) / 2);
         var props = new List<PlacedDecoration>();
         foreach (var (piece, index) in pieces.Select((piece, index) => (piece, index)))
         {
-            var size = piece.Width * 3.0;
-            props.Add(new PlacedDecoration(Guid.NewGuid(), piece.Id, Math.Clamp((left + size / 2) / screenWidth, 0, 1),
-                Pushes: piece.PushesByDefault,
-                Support: taskbarAtBottom ? DecorationSupport.TaskbarTop : DecorationSupport.DesktopEdge));
-            left += size + 11;
+            var size = piece.Width * pixelScale;
+            var prop = new PlacedDecoration(Guid.NewGuid(), piece.Id,
+                Math.Clamp((left + size / 2) / Math.Max(1, DecorationService.DipWidth(screen)), 0, 1),
+                Pushes: piece.PushesByDefault, Support: support);
+            var frame = DecorationPlacement.Frame(prop, piece, screen, bodies);
+            props.Add(prop with { X = frame.CenterX / Math.Max(1, DecorationService.DipWidth(screen)) });
+            left += size + gap;
         }
         return new DecorationScene(props, []);
     }

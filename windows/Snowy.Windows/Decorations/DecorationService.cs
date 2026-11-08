@@ -11,7 +11,6 @@ namespace Snowy.Windows.Decorations;
 /// <summary>Per-monitor persisted pixel props and softly moving strings of lights.</summary>
 public sealed class DecorationService
 {
-    private const double PixelScale = 3;
     private readonly string dataDirectory;
     private readonly DecorationCatalog catalog;
     private readonly Dictionary<string, DecorationScene> scenes = new(StringComparer.Ordinal);
@@ -94,8 +93,7 @@ public sealed class DecorationService
 
     public void SelectPreset(string screenId, DecorationPreset preset, DesktopScreen screen)
     {
-        var taskbar = IsBottomTaskbar(GetHostBodies(screen), screen);
-        Save(screenId, catalog.CreatePreset(preset, DipWidth(screen), taskbar.HasValue));
+        Save(screenId, catalog.CreatePreset(preset, screen, GetHostBodies(screen)));
     }
 
     public IReadOnlyList<Body> GetBodies(DesktopScreen screen) =>
@@ -113,15 +111,8 @@ public sealed class DecorationService
         var id = screen.Id;
         var runtime = GetLightRuntime(id, current.Lights, screen);
         var hasIconAnchors = current.Lights.Any(light => light.Anchors.Any(anchor => anchor.BodyId < 0));
-        var detached = runtime.Advance(current.Lights, screen, GetAnchorBodies(screen, editorOpen || hasIconAnchors), context.Wind,
+        runtime.Advance(current.Lights, screen, GetAnchorBodies(screen, editorOpen || hasIconAnchors), context.Wind,
             context.Pointer, context.DeltaSeconds, context.ReducedMotion);
-        if (detached.Count > 0)
-        {
-            var updated = current.Lights.Select(light => detached.FirstOrDefault(item => item.Id == light.Id) ?? light).ToList();
-            current = current with { Lights = updated };
-            try { Save(screen.Id, current); }
-            catch (IOException) { }
-        }
 
         var drawing = context.Canvas;
         RenderProps(drawing, screen, context.Bodies, current.Props);
@@ -145,17 +136,16 @@ public sealed class DecorationService
         var props = current.Props.ToList();
         var changed = false;
         var screenWidth = DipWidth(screen);
-        var taskbar = IsBottomTaskbar(bodies, screen);
         for (var index = 0; index < props.Count; index++)
         {
             var prop = props[index];
             if (!prop.Pushes || catalog.Find(prop.AssetId) is not { } piece) continue;
             var multiplier = tool == SnowTool.Shovel ? 1.5f : 1f;
-            var width = piece.Width * (float)(PixelScale * prop.Scale);
-            var height = piece.Height * (float)(PixelScale * prop.Scale);
-            var left = (float)(prop.X * screenWidth - width / 2);
-            var top = prop.Support == DecorationSupport.TaskbarTop && taskbar is { } bar
-                ? (float)bar.Top - height : (float)DipHeight(screen) - height;
+            var frame = DecorationPlacement.Frame(prop, piece, screen, bodies);
+            var width = (float)frame.Width;
+            var height = (float)frame.Height;
+            var left = (float)frame.Left;
+            var top = (float)frame.Top;
             var closest = new Vector2(Math.Clamp(cursor.X, left, left + width), Math.Clamp(cursor.Y, top, top + height));
             var velocity = propVelocities.GetValueOrDefault(prop.Id);
             if (previous is { } oldCursor)
@@ -169,27 +159,31 @@ public sealed class DecorationService
                 }
             }
             var movement = velocity * dt;
+            if (movement == 0) continue;
             velocity *= MathF.Exp(-7.5f * dt);
             if (MathF.Abs(velocity) < 7) velocity = 0;
-            var center = prop.X * screenWidth + movement;
-            center = Math.Clamp(center, width / 2, Math.Max(width / 2, screenWidth - width / 2));
+            var rail = DecorationPlacement.RailFor(prop.Support, screen, bodies);
+            var center = (float)frame.CenterX + movement;
+            var minimumCenter = (float)(rail.Left + width / 2);
+            var maximumCenter = (float)(rail.Right - width / 2);
+            center = Math.Clamp(center, minimumCenter, Math.Max(minimumCenter, maximumCenter));
             foreach (var other in props)
             {
                 if (other.Id == prop.Id || other.Support != prop.Support || catalog.Find(other.AssetId) is not { } otherPiece) continue;
-                var otherHeight = otherPiece.Height * PixelScale * other.Scale;
-                var otherTop = other.Support == DecorationSupport.TaskbarTop && taskbar is { } taskbarBounds
-                    ? taskbarBounds.Top - otherHeight : DipHeight(screen) - otherHeight;
-                if (top + height < otherTop + 2 || otherTop + otherHeight < top + 2) continue;
-                var otherWidth = otherPiece.Width * PixelScale * other.Scale;
-                var otherCenter = other.X * screenWidth;
+                var otherFrame = DecorationPlacement.Frame(other, otherPiece, screen, bodies);
+                if (frame.Top + frame.Height < otherFrame.Top + 2 || otherFrame.Top + otherFrame.Height < frame.Top + 2) continue;
+                var otherWidth = (float)otherFrame.Width;
+                var otherCenter = (float)otherFrame.CenterX;
                 if (movement > 0 && otherCenter > prop.X * screenWidth)
                     center = Math.Min(center, otherCenter - otherWidth / 2 - width / 2);
                 else if (movement < 0 && otherCenter < prop.X * screenWidth)
                     center = Math.Max(center, otherCenter + otherWidth / 2 + width / 2);
             }
-            velocity = center != prop.X * screenWidth + movement ? 0 : velocity;
+            center = Math.Clamp(center, minimumCenter, Math.Max(minimumCenter, maximumCenter));
+            velocity = Math.Abs(center - ((float)frame.CenterX + movement)) > 0.01f ? 0 : velocity;
             propVelocities[prop.Id] = velocity;
-            var x = Math.Clamp(center / screenWidth, 0, 1);
+            var candidate = prop with { X = Math.Clamp(center / screenWidth, 0, 1) };
+            var x = DecorationPlacement.Frame(candidate, piece, screen, bodies).CenterX / screenWidth;
             if (Math.Abs(x - prop.X) > 0.00001)
             {
                 props[index] = prop with { X = x };
@@ -279,25 +273,20 @@ public sealed class DecorationService
     private IReadOnlyList<Body> BuildBodies(DesktopScreen screen, IReadOnlyList<Body> hostBodies)
     {
         var scene = Scene(screen.Id);
-        var taskbar = IsBottomTaskbar(hostBodies, screen);
-        var bodies = new List<Body>(scene.Props.Count * 3);
+        var bodies = new List<Body>(scene.Props.Count * 6);
         foreach (var item in scene.Props)
         {
             var piece = catalog.Find(item.AssetId);
             if (piece is null) continue;
-            var scale = PixelScale * Math.Clamp(item.Scale, .65, 1.6);
-            var height = (float)(piece.Height * scale);
-            var x = (float)(Math.Clamp(item.X, 0, 1) * DipWidth(screen) - piece.Width * scale / 2);
-            var y = item.Support == DecorationSupport.TaskbarTop && taskbar is { } bar
-                ? (float)bar.Top
-                : (float)DipHeight(screen);
+            var frame = DecorationPlacement.Frame(item, piece, screen, hostBodies);
+            var scale = frame.Width / piece.Width;
             var bands = catalog.ColliderBands(item.AssetId);
             for (var index = 0; index < bands.Count; index++)
             {
                 var band = bands[index];
                 var bodyId = StableBodyId(item.Id, index);
                 bodies.Add(new Body(bodyId,
-                    new Vector2(x + band.X * (float)scale, y - height + band.Y * (float)scale),
+                    new Vector2((float)(frame.Left + band.X * scale), (float)(frame.Top + band.Y * scale)),
                     new Vector2(Math.Max(8, band.Width * (float)scale), Math.Max(8, band.Height * (float)scale)), BodyKind.Decoration, 1));
             }
         }
@@ -312,18 +301,12 @@ public sealed class DecorationService
     private void RenderProps(DrawingContext drawing, DesktopScreen screen, IReadOnlyList<Body> hostBodies,
         IReadOnlyList<PlacedDecoration> props)
     {
-        var taskbar = IsBottomTaskbar(hostBodies, screen);
         foreach (var item in props)
         {
             var piece = catalog.Find(item.AssetId);
             if (piece is null) continue;
-            var scale = PixelScale * Math.Clamp(item.Scale, .65, 1.6);
-            var size = new Size(piece.Width * scale, piece.Height * scale);
-            var centerX = Math.Clamp(item.X, 0, 1) * DipWidth(screen);
-            var top = item.Support == DecorationSupport.TaskbarTop && taskbar is { } bar
-                ? bar.Top - size.Height
-                : DipHeight(screen) - size.Height;
-            drawing.DrawImage(catalog.Image(item.AssetId), new Rect(centerX - size.Width / 2, top, size.Width, size.Height));
+            var frame = DecorationPlacement.Frame(item, piece, screen, hostBodies);
+            drawing.DrawImage(catalog.Image(item.AssetId), new Rect(frame.Left, frame.Top, frame.Width, frame.Height));
         }
     }
 
@@ -371,15 +354,12 @@ public sealed class DecorationService
         }
     }
 
-    private static Body? IsBottomTaskbar(IReadOnlyList<Body> bodies, DesktopScreen screen) =>
-        bodies.Where(body => body.Kind == BodyKind.Taskbar && body.Left <= 1 && body.Right >= DipWidth(screen) - 1 && body.Top > DipHeight(screen) * .6)
-            .OrderBy(body => body.Top).Select(body => (Body?)body).FirstOrDefault();
-
     internal static LightAnchor SnapAnchor(Point point, DesktopScreen screen, IReadOnlyList<Body> bodies)
     {
         var best = point;
         long? bodyId = null;
         AnchorEdge? bestEdge = null;
+        var persistBodyId = false;
         var fraction = 0.0;
         var shortest = 30.0;
         foreach (var body in bodies)
@@ -391,6 +371,7 @@ public sealed class DecorationService
                 if (distance < shortest) shortest = distance; else continue;
                 best = candidate;
                 bodyId = body.Id;
+                persistBodyId = body.Id > 0 && body.Kind == BodyKind.Decoration;
                 bestEdge = edge;
                 fraction = edgeFraction;
             }
@@ -399,10 +380,18 @@ public sealed class DecorationService
         {
             var candidate = SnapToEdge(point, 0, 0, DipWidth(screen), DipHeight(screen), edge, out var edgeFraction);
             var distance = (candidate - point).Length;
-            if (distance < shortest) { shortest = distance; best = candidate; bodyId = null; bestEdge = edge; fraction = edgeFraction; }
+            if (distance < shortest)
+            {
+                shortest = distance;
+                best = candidate;
+                bodyId = null;
+                persistBodyId = false;
+                bestEdge = edge;
+                fraction = edgeFraction;
+            }
         }
         return new LightAnchor(best.X / Math.Max(1, DipWidth(screen)), best.Y / Math.Max(1, DipHeight(screen)),
-            bodyId, bestEdge, fraction);
+            bodyId, bestEdge, fraction, persistBodyId);
     }
 
     internal static double DipWidth(DesktopScreen screen) => screen.Width / Math.Max(.25, screen.Scale);
@@ -442,14 +431,14 @@ public sealed class DecorationService
                     if (screenId is { Length: > 0 and <= 128 } && scene is not null)
                     {
                         var bounded = scene.Bounded(catalog.Ids);
-                        // Shell window handles can be recycled after restart. Keep their saved position,
-                        // but resolve them as free endpoints until the user attaches them again.
+                        // Transient shell handles can be recycled after restart. Keep each saved
+                        // normalized position; only stable scene-decoration body IDs survive reload.
                         bounded = bounded with
                         {
                             Lights = bounded.Lights.Select(light => light with
                             {
-                                Anchors = light.Anchors.Select(anchor => anchor.BodyId is null or < 0
-                                    ? anchor : anchor with { BodyId = null, Edge = null }).ToList()
+                                Anchors = light.Anchors.Select(anchor => anchor.BodyId is null or < 0 || anchor.PersistBodyId
+                                    ? anchor : anchor with { BodyId = null, Edge = null, PersistBodyId = false }).ToList()
                             }).ToList()
                         };
                         scenes[screenId] = bounded;
@@ -514,22 +503,22 @@ public sealed class DecorationService
             foreach (var id in lines.Keys.Where(id => !wanted.Contains(id)).ToArray()) lines.Remove(id);
             foreach (var light in strings)
             {
-                if (!lines.TryGetValue(light.Id, out var line) || line.Model != light)
+                if (!lines.TryGetValue(light.Id, out var line) || !line.HasSamePhysics(light))
                     lines[light.Id] = line = new RuntimeLine(light, screen);
+                else
+                    line.UpdateModel(light, screen);
                 line.Screen = screen;
             }
         }
 
-        public IReadOnlyList<HangingLight> Advance(IReadOnlyList<HangingLight> strings, DesktopScreen screen, IReadOnlyList<Body> bodies,
+        public void Advance(IReadOnlyList<HangingLight> strings, DesktopScreen screen, IReadOnlyList<Body> bodies,
             Vector2 wind, Vector2? pointer, float elapsed, bool reducedMotion)
         {
-            var detached = new List<HangingLight>();
             foreach (var light in strings)
             {
                 if (!lines.TryGetValue(light.Id, out var line)) continue;
-                if (line.Step(screen, bodies, wind, pointer, elapsed, reducedMotion)) detached.Add(line.Model);
+                line.Step(screen, bodies, wind, pointer, elapsed, reducedMotion);
             }
-            return detached;
         }
     }
 
@@ -544,6 +533,7 @@ public sealed class DecorationService
         public DesktopScreen Screen { get; set; }
         private readonly List<int> Pins = [];
         private readonly List<bool> Held = [];
+        private readonly List<bool> WasFollowing = [];
         private readonly List<float> LinkLengths = [];
 
         public RuntimeLine(HangingLight model, DesktopScreen screen)
@@ -553,7 +543,8 @@ public sealed class DecorationService
             Points = BuildPoints(model, screen);
             Previous = Points.ToList();
             Pins.Add(0);
-            Held.Add(IsAttached(model.Anchors[0]));
+            Held.Add(true);
+            WasFollowing.Add(false);
             var node = 0;
             for (var span = 0; span < model.Anchors.Count - 1; span++)
             {
@@ -562,31 +553,43 @@ public sealed class DecorationService
                 var count = Math.Max(6, Math.Min(24, (int)(Vector2.Distance(ToVector(start), ToVector(end)) / 24) + 1));
                 node += count - 1;
                 Pins.Add(node);
-                Held.Add(IsAttached(model.Anchors[span + 1]));
+                Held.Add(true);
+                WasFollowing.Add(false);
             }
             for (var index = 1; index < Points.Count; index++)
                 LinkLengths.Add(Vector2.Distance(Points[index - 1], Points[index]));
             RebuildBulbs();
         }
 
-        public bool Step(DesktopScreen screen, IReadOnlyList<Body> bodies, Vector2 wind, Vector2? cursor,
+        public bool HasSamePhysics(HangingLight other) => Model.Id == other.Id && Model.Slack == other.Slack &&
+            Model.Anchors.SequenceEqual(other.Anchors);
+
+        public void UpdateModel(HangingLight model, DesktopScreen screen)
+        {
+            Model = model;
+            Screen = screen;
+        }
+
+        public void Step(DesktopScreen screen, IReadOnlyList<Body> bodies, Vector2 wind, Vector2? cursor,
             float elapsed, bool reducedMotion)
         {
             Screen = screen;
-            if (Points.Count < 2) return false;
+            if (Points.Count < 2) return;
             var dt = Math.Clamp(float.IsFinite(elapsed) ? elapsed : 1f / 30, 1f / 120, 1f / 24);
             var anchors = Model.Anchors.Select(anchor => ToVector(ResolveAnchor(anchor, screen, bodies))).ToArray();
-            var changed = false;
             for (var index = 0; index < Model.Anchors.Count && index < Pins.Count; index++)
             {
+                if (!Held[index]) continue;
                 var anchor = Model.Anchors[index];
-                if (anchor.BodyId is { } targetId && !bodies.Any(body => body.Id == targetId))
+                if (anchor.BodyId is not { } targetId) continue;
+                if (bodies.Any(body => body.Id == targetId))
                 {
-                    var oldPosition = Points[Pins[index]];
-                    Model = ReplaceAnchor(Model, index, FreeAnchor(oldPosition, screen));
-                    Held[index] = false;
-                    changed = true;
+                    WasFollowing[index] = true;
+                    continue;
                 }
+                if (!WasFollowing[index]) continue;
+                Held[index] = false;
+                WasFollowing[index] = false;
             }
             for (var index = 0; index + 1 < Pins.Count && index + 1 < anchors.Length; index++)
             {
@@ -598,13 +601,12 @@ public sealed class DecorationService
                 var distance = Vector2.Distance(anchors[index], anchors[index + 1]);
                 if (distance <= reach * 1.22f + 9) continue;
                 var movable = new[] { index, index + 1 }.Where(joint =>
-                    Model.Anchors[joint].BodyId is not null &&
+                    Model.Anchors[joint].BodyId is not null && WasFollowing[joint] &&
                     Vector2.Distance(anchors[joint], Points[Pins[joint]]) > .25f).ToArray();
                 if (movable.Length == 0) continue;
                 var detach = movable.MaxBy(joint => Vector2.DistanceSquared(anchors[joint], Points[Pins[joint]]));
-                Model = ReplaceAnchor(Model, detach, FreeAnchor(Points[Pins[detach]], screen));
                 Held[detach] = false;
-                changed = true;
+                WasFollowing[detach] = false;
             }
             for (var i = 0; i < Pins.Count && i < anchors.Length; i++)
             {
@@ -638,7 +640,6 @@ public sealed class DecorationService
                 }
             }
             RebuildBulbs();
-            return changed;
         }
 
         private bool IsPinned(int node)
@@ -647,19 +648,6 @@ public sealed class DecorationService
                 if (Held[index] && Pins[index] == node) return true;
             return false;
         }
-
-        private static bool IsAttached(LightAnchor anchor) => anchor.BodyId is not null || anchor.Edge is not null;
-
-        private static HangingLight ReplaceAnchor(HangingLight light, int index, LightAnchor anchor)
-        {
-            var anchors = light.Anchors.ToList();
-            anchors[index] = anchor;
-            return light with { Anchors = anchors };
-        }
-
-        private static LightAnchor FreeAnchor(Vector2 point, DesktopScreen screen) =>
-            new(Math.Clamp(point.X / Math.Max(1, (float)DipWidth(screen)), 0, 1),
-                Math.Clamp(point.Y / Math.Max(1, (float)DipHeight(screen)), 0, 1));
 
         private void RebuildBulbs()
         {
