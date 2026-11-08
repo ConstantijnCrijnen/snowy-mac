@@ -19,4 +19,17 @@
     <Resource Include="Assets/Snowy.ico" />
     <Resource Include="Decorations/Assets/*.png;Decorations/Assets/catalog.json" />
   </ItemGroup>
+  <Target Name="IncludeRuntimeLicenses" AfterTargets="ComputeFilesToPublish" Condition="'$(SelfContained)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="%(ResolvedRuntimePack.PackageDirectory)/LICENSE.TXT"
+        Condition="'%(ResolvedRuntimePack.FrameworkName)' == 'Microsoft.NETCore.App'"
+        RelativePath="Licenses/dotnet-LICENSE.txt" CopyToPublishDirectory="PreserveNewest" />
+      <ResolvedFileToPublish Include="%(ResolvedRuntimePack.PackageDirectory)/THIRD-PARTY-NOTICES.TXT"
+        Condition="'%(ResolvedRuntimePack.FrameworkName)' == 'Microsoft.NETCore.App'"
+        RelativePath="Licenses/dotnet-THIRD-PARTY-NOTICES.txt" CopyToPublishDirectory="PreserveNewest" />
+      <ResolvedFileToPublish Include="%(ResolvedRuntimePack.PackageDirectory)/LICENSE"
+        Condition="'%(ResolvedRuntimePack.FrameworkName)' == 'Microsoft.WindowsDesktop.App'"
+        RelativePath="Licenses/windows-desktop-LICENSE.txt" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 </Project>

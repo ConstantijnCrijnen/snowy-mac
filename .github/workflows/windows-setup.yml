@@ -119,6 +119,11 @@ jobs:
           $pe = [IO.File]::ReadAllBytes($app)
           $machine = [BitConverter]::ToUInt16($pe, [BitConverter]::ToInt32($pe, 0x3c) + 4)
           if ($machine -ne [int]$env:EXPECTED_MACHINE) { throw "Wrong installed PE machine type: $machine" }
+          foreach ($notice in 'dotnet-LICENSE.txt', 'dotnet-THIRD-PARTY-NOTICES.txt', 'windows-desktop-LICENSE.txt') {
+            if (-not (Test-Path -LiteralPath (Join-Path $installed "Licenses\$notice") -PathType Leaf)) {
+              throw "Missing installed runtime notice: $notice"
+            }
+          }
           if (Get-Process -Name Snowy -ErrorAction SilentlyContinue) { throw 'Silent setup launched Snowy.' }
           $otherFile = Join-Path $installed 'setup-test-user-file.txt'
           Set-Content -LiteralPath $otherFile -Value 'user file stays'
