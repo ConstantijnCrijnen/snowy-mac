@@ -1,5 +1,6 @@
 Snowy brings interactive snow to window edges, desktop widgets, Spotlight, and a bottom-positioned Dock.
 
+- Fixes an issue where the ChatGPT desktop companion overlay could block snow from falling on the right side of the screen.
 - **Open Snowy…** brings up Wallpapers, Decorations, and a Guide with a replayable walkthrough.
 - Import wallpapers in batches and apply them to one or all displays. Two original winter wallpapers are included.
 - Pick a pixel-art preset or build a custom scene. Props catch snow, snap to the desktop edge or Dock, and can slide when swept.
