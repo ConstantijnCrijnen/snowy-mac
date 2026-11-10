@@ -2,7 +2,7 @@ name: Checks
 
 on:
   push:
-    branches: [main]
+    branches: [main, ci/validate-codex-overlay]
     tags: ['v*']
   pull_request:
   workflow_dispatch:
