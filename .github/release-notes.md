@@ -11,3 +11,5 @@ Open the DMG and drag **Snowy.app** onto **Applications**. If you have 0.9.1 or 
 Requires Apple Silicon and macOS 14 or later.
 
 SHA-256 checksums are attached beside the DMG and ZIP files. Source build and usage instructions are in the README.
+
+This beta uses local code signing. If macOS blocks the copy you downloaded here, go to **System Settings → Privacy & Security → Open Anyway** after trying to open it. If Finder icon anchors stop following after an update, check Snowy’s Accessibility permission.
