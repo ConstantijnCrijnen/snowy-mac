@@ -22,6 +22,54 @@ final class SystemSurfaceTests: XCTestCase {
         XCTAssertNil(DesktopWindowDecoder.processRole(bundleIdentifier: "com.example.WindowManager"))
     }
 
+    func testCodexFloatingOverlayDoesNotClipSnowWhileItsNormalWindowRemainsPhysical() {
+        let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let app = metadata(id: 1, pid: 123, bounds: CGRect(x: 100, y: 200, width: 1200, height: 700))
+        // Observed alongside Codex's normal window on a 3024 × 1964 Retina display.
+        // The transparent overlay reports opaque window alpha and extends beyond the screen.
+        let overlay = metadata(id: 2, pid: 123, bounds: CGRect(x: 701, y: -39, width: 1138, height: 1867),
+                               layer: Int(CGWindowLevelForKey(.floatingWindow)))
+        let identities: [Int32: String] = [123: "com.openai.codex"]
+        let baseline = DesktopSceneBuilder.build(displayBounds: screen, menuInset: 33, windows:
+            DesktopWindowDecoder.decode(metadata: [app], processRoles: [:], excludingPID: 999,
+                                        processBundleIdentifiers: identities))
+        let records = DesktopWindowDecoder.decode(metadata: [overlay, app], processRoles: [:], excludingPID: 999,
+                                                  processBundleIdentifiers: identities)
+        let scene = DesktopSceneBuilder.build(displayBounds: screen, menuInset: 33, windows: records)
+        XCTAssertEqual(scene.bodies, baseline.bodies)
+        XCTAssertEqual(scene.surfaces, baseline.surfaces)
+        XCTAssertEqual(scene.bodies.map(\.id), [1])
+        XCTAssertEqual(scene.surfaces.first { $0.id == 1 }?.visibleSpans, [Span(0, 1200)])
+        XCTAssertEqual(scene.surfaces[0].snowfallSpans, [Span(0, 100), Span(1300, 1512)])
+    }
+
+    func testFloatingWindowsOfOtherAppsAreNotExcludedByCodexNameOrGeometry() {
+        for bundle in ["com.example.editor", "com.openai.codex.helper", "com.example.com.openai.codex"] {
+            var floating = metadata(id: 1, pid: 123,
+                                    bounds: CGRect(x: 701, y: -39, width: 1138, height: 1867),
+                                    layer: Int(CGWindowLevelForKey(.floatingWindow)))
+            floating[kCGWindowOwnerName as String] = "Codex"
+            floating[kCGWindowName as String] = "Codex"
+            let records = DesktopWindowDecoder.decode(metadata: [floating], processRoles: [:], excludingPID: 999,
+                                                      processBundleIdentifiers: [123: bundle])
+            XCTAssertTrue(records.first?.role == .application)
+            let scene = DesktopSceneBuilder.build(displayBounds: display, menuInset: 24, windows: records)
+            XCTAssertEqual(scene.bodies.map(\.id), [1])
+        }
+    }
+
+    func testCodexWindowsAtOtherApplicationLevelsRemainPhysical() {
+        for level in [0, 1, 2, 4, 19] {
+            let window = metadata(id: 1, pid: 123, bounds: CGRect(x: 100, y: 200, width: 400, height: 300),
+                                  layer: level)
+            let records = DesktopWindowDecoder.decode(metadata: [window], processRoles: [:], excludingPID: 999,
+                                                      processBundleIdentifiers: [123: "com.openai.codex"])
+            let scene = DesktopSceneBuilder.build(displayBounds: display, menuInset: 24, windows: records)
+            XCTAssertEqual(scene.bodies.map(\.id), [1])
+            XCTAssertEqual(scene.surfaces.first { $0.id == 1 }?.visibleSpans, [Span(0, 400)])
+        }
+    }
+
     func testTilingPreviewsNeverBecomeBodiesOrSnowSupportsAtAnyAcceptedLayer() {
         let app = metadata(id: 1, pid: 1, bounds: CGRect(x: 100, y: 400, width: 800, height: 300))
         let baseRecords = DesktopWindowDecoder.decode(metadata: [app], processRoles: [:], excludingPID: 999)
