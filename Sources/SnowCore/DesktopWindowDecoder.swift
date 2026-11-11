@@ -30,8 +30,7 @@ public enum DesktopWindowDecoder {
     }
 
     public static func decode(metadata: [[String: Any]], processRoles: [Int32: DesktopWindowRole],
-                              excludingPID: Int32, dockLevel: Int = 20,
-                              processBundleIdentifiers: [Int32: String] = [:]) -> [DesktopWindowRecord] {
+                              excludingPID: Int32, dockLevel: Int = 20) -> [DesktopWindowRecord] {
         var records: [DesktopWindowRecord] = []
         records.reserveCapacity(min(512, metadata.count))
         for dictionary in metadata.prefix(512) {
@@ -57,12 +56,7 @@ public enum DesktopWindowDecoder {
             // identity and bounded panel geometry make a global elevated-level guess unnecessary.
             guard layer <= 101 || processRole == .spotlight || processRole == .dock else { continue }
             let role: DesktopWindowRole
-            if processBundleIdentifiers[pid.int32Value]?.lowercased() == "com.openai.codex",
-               layer == Int(CGWindowLevelForKey(.floatingWindow)) {
-                // Codex's transparent floating presentation window can report alpha 1.
-                // Its bounds are not a physical obstacle; retain the normal app window below.
-                role = .other
-            } else if processRole == .other {
+            if processRole == .other {
                 // WindowManager's tiling suggestions are translucent presentation, not new
                 // physical windows. Keep them out of the scene at every window level.
                 role = .other

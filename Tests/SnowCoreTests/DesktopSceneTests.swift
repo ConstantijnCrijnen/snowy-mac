@@ -56,6 +56,42 @@ final class DesktopSceneTests: XCTestCase {
         XCTAssertEqual(scene.surfaces.first { $0.id == 1 }?.visibleSpans, [Span(0, 150), Span(250, 400)])
     }
 
+    func testOversizedFloatingWindowDoesNotCutOffSnow() {
+        let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let application = window(1, CGRect(x: 100, y: 200, width: 1200, height: 700))
+        let overlay = window(2, CGRect(x: 701, y: -39, width: 1138, height: 1867),
+                             layer: Int(CGWindowLevelForKey(.floatingWindow)))
+        let baseline = DesktopSceneBuilder.build(displayBounds: screen, menuInset: 33, windows: [application])
+        let scene = DesktopSceneBuilder.build(displayBounds: screen, menuInset: 33, windows: [overlay, application])
+        XCTAssertEqual(scene.bodies, baseline.bodies)
+        XCTAssertEqual(scene.surfaces, baseline.surfaces)
+    }
+
+    func testOrdinaryAndSlightlyOversizedFloatingWindowsStillBlockSnow() {
+        let layer = Int(CGWindowLevelForKey(.floatingWindow))
+        for bounds in [CGRect(x: 300, y: 100, width: 350, height: 500),
+                       CGRect(x: 300, y: -20, width: 350, height: 840)] {
+            let scene = DesktopSceneBuilder.build(displayBounds: display, menuInset: 24,
+                                                  windows: [window(1, bounds, layer: layer)])
+            XCTAssertEqual(scene.bodies.map(\.id), [1])
+            XCTAssertEqual(scene.surfaces[0].snowfallSpans, [Span(0, 300), Span(650, 1000)])
+        }
+    }
+
+    func testOversizedNormalWindowsAndFloatingWindowsSpanningDisplaysStayPhysical() {
+        let secondDisplay = display.offsetBy(dx: 0, dy: display.height)
+        let layout = display.union(secondDisplay)
+        let bounds = CGRect(x: 300, y: -20, width: 350, height: 1400)
+        let normal = DesktopSceneBuilder.build(displayBounds: display, menuInset: 24, windows: [window(1, bounds)])
+        XCTAssertEqual(normal.bodies.map(\.id), [1])
+        let floating = window(2, bounds, layer: Int(CGWindowLevelForKey(.floatingWindow)))
+        for screen in [display, secondDisplay] {
+            let scene = DesktopSceneBuilder.build(displayBounds: screen, menuInset: 24, windows: [floating],
+                                                  displayLayoutBounds: layout)
+            XCTAssertEqual(scene.bodies.map(\.id), [2])
+        }
+    }
+
     func testNegativeLevelWidgetAccumulatesButWallpaperDoesNot() {
         let scene = DesktopSceneBuilder.build(displayBounds: display, menuInset: 24, windows: [
             window(1, CGRect(x: 50, y: 100, width: 300, height: 160), role: .widget, layer: -2_147_483_603),
