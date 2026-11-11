@@ -33,6 +33,31 @@ final class DockDetectionTests: XCTestCase {
         XCTAssertEqual(scene.surfaces.first?.snowfallSpans, [Span(0, 218), Span(782, 1000)])
     }
 
+    func testModernFallbackSeparatesFloatingTrayFromReservedScreenStrip() throws {
+        let secondary = CGRect(x: -1512, y: -200, width: 1512, height: 982)
+        let host = DesktopWindowRecord(id: 42, bounds: secondary, layer: 20, role: .dock)
+        let scene = DesktopSceneBuilder.build(displayBounds: secondary, menuInset: 24, windows: [host],
+            dockLayout: DockLayoutHint(orientation: .bottom, tileSize: 34, itemCount: 34, hasRecentSection: true),
+            dockBottomInset: 54, appearance: .modern)
+        let body = try XCTUnwrap(scene.bodies.first)
+        let cap = try XCTUnwrap(scene.surfaces.first { $0.isDock })
+        XCTAssertEqual(body.bounds, CGRect(x: 126, y: 928, width: 1260, height: 48))
+        XCTAssertEqual(cap.x + cap.width, Float(body.bounds.maxX))
+        XCTAssertEqual(cap.baseY(at: 0), Float(body.bounds.minY) + body.cornerRadius, accuracy: 0.001)
+        XCTAssertFalse(body.contains(SIMD2(756, 979)))
+        XCTAssertEqual(scene.surfaces.first?.visibleSpans, [Span(0, 1512)])
+        XCTAssertEqual(scene.surfaces.first?.snowfallSpans, [Span(0, 126), Span(1386, 1512)])
+    }
+
+    func testModernFallbackUsesCompressedTileSizeForACrowdedDock() throws {
+        let scene = DesktopSceneBuilder.build(displayBounds: display, menuInset: 24, windows: [],
+            dockLayout: DockLayoutHint(orientation: .bottom, tileSize: 64, itemCount: 20),
+            dockBottomInset: 52, appearance: .modern)
+        let tray = try XCTUnwrap(scene.bodies.first)
+        XCTAssertEqual(tray.bounds.width, 699)
+        XCTAssertEqual(tray.bounds.midX, display.midX)
+    }
+
     func testTransparentHighLevelDockHostIsRetainedOnlyAsBoundedFallbackMetadata() throws {
         let records = DesktopWindowDecoder.decode(metadata: [metadata()], processRoles: [:], excludingPID: 999)
         XCTAssertEqual(records.count, 1)

@@ -25,7 +25,9 @@ public final class SnowDrift {
         snowfallCapacities = heights
         cornerWind = windEffects?.count == count ? windEffects! : Array(repeating: .neutral, count: count)
         let phase = Float(surface.id % 997) * 0.17
-        let taperWidth: Float = surface.width < 16 ? surface.width / 2 : 13
+        // The shallow Dock ridge should reach its rounded shoulders before tapering.
+        let taperWidth: Float = surface.isDock ? min(6, surface.width / 2)
+            : (surface.width < 16 ? surface.width / 2 : 13)
         let limit: Float
         if surface.id == DesktopSceneBuilder.groundID { limit = 28 }
         else if surface.isDock { limit = 13 }

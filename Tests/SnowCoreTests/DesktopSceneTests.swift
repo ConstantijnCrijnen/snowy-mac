@@ -56,6 +56,29 @@ final class DesktopSceneTests: XCTestCase {
         XCTAssertEqual(scene.surfaces.first { $0.id == 1 }?.visibleSpans, [Span(0, 150), Span(250, 400)])
     }
 
+    func testOverlappingWindowLeavesSnowMeshForRoundedCornersWithoutDirectSnowfall() {
+        let scene = DesktopSceneBuilder.build(displayBounds: display, menuInset: 24, windows: [
+            window(2, CGRect(x: 300, y: 180, width: 200, height: 400)),
+            window(1, CGRect(x: 100, y: 200, width: 500, height: 300))
+        ], appearance: .modern)
+        let cap = scene.surfaces.first { $0.id == 1 }!
+        XCTAssertFalse(cap.isSnowExposed(at: 206))
+        XCTAssertFalse(cap.isSnowExposed(at: 394))
+
+        let simulation = SnowSimulation(size: SIMD2(1000, 800), budget: SimulationBudget(flakes: 0))
+        simulation.updateScene(surfaces: [cap], bodies: scene.bodies)
+        for _ in 0..<2000 { simulation.step(dt: 0.05, cursor: nil) }
+        simulation.rebuildMesh()
+
+        for corner in [Float(301)...310, 490...499] {
+            XCTAssertTrue(simulation.mesh.contains {
+                corner.contains($0.position.x) && $0.position.y < 199
+            }, "Settled snow should reach into the corner for macOS to composite")
+        }
+        XCTAssertFalse(simulation.mesh.contains { $0.position.x > 350 && $0.position.x < 450 },
+                       "The fully covered middle of the cap can still be culled")
+    }
+
     func testOversizedFloatingWindowDoesNotCutOffSnow() {
         let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
         let application = window(1, CGRect(x: 100, y: 200, width: 1200, height: 700))
@@ -172,6 +195,19 @@ final class DesktopSceneTests: XCTestCase {
         XCTAssertGreaterThan(cap.baseY(at: 4), 200)
         XCTAssertEqual(cap.baseY(at: 12), 200, accuracy: 0.001)
         XCTAssertEqual(cap.baseY(at: 200), 200, accuracy: 0.001)
+    }
+
+    func testModernWindowCapAndColliderFollowTheLargerWindowCorner() throws {
+        let scene = DesktopSceneBuilder.build(displayBounds: display, menuInset: 24,
+            windows: [window(1, CGRect(x: 100, y: 200, width: 400, height: 300))],
+            appearance: DesktopAppearance(macOSMajorVersion: 26))
+        let cap = try XCTUnwrap(scene.surfaces.first { $0.id == 1 })
+        let body = try XCTUnwrap(scene.bodies.first)
+        let shoulder = cap.baseY(at: 4)
+        XCTAssertEqual(shoulder, 212, accuracy: 1)
+        XCTAssertEqual(cap.baseY(at: 26), 200, accuracy: 0.001)
+        XCTAssertFalse(body.contains(SIMD2(104, shoulder - 0.1)))
+        XCTAssertTrue(body.contains(SIMD2(104, shoulder + 0.1)))
     }
 
     func testBottomDockAtNonstandardLevelStillCreatesSurfaceAndRejectsWallpaper() {

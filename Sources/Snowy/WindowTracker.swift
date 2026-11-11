@@ -48,6 +48,7 @@ final class WindowTracker {
     private var cachedRecords: [DesktopWindowRecord] = []
     private var trackedWindow: UInt32?
     private var roles: [Int32: DesktopWindowRole] = [:]
+    private var runningDockApps: Set<String> = []
     private var lastProcessLookup: TimeInterval = -.infinity
     private var wasDragging = false
     private var dockLayout: DockLayoutHint?
@@ -121,11 +122,14 @@ final class WindowTracker {
         inFlight = true
         if now - lastProcessLookup > 5 {
             roles.removeAll(keepingCapacity: true)
+            runningDockApps.removeAll(keepingCapacity: true)
             finderPID = nil
             for app in NSWorkspace.shared.runningApplications {
-                guard let bundle = app.bundleIdentifier,
-                      let role = DesktopWindowDecoder.processRole(bundleIdentifier: bundle) else { continue }
-                roles[app.processIdentifier] = role
+                guard let bundle = app.bundleIdentifier else { continue }
+                if app.activationPolicy == .regular, bundle != "com.apple.finder" { runningDockApps.insert(bundle) }
+                if let role = DesktopWindowDecoder.processRole(bundleIdentifier: bundle) {
+                    roles[app.processIdentifier] = role
+                }
                 if bundle == "com.apple.finder" { finderPID = app.processIdentifier }
             }
             lastProcessLookup = now
@@ -136,15 +140,21 @@ final class WindowTracker {
             // The default orientation need not have a stored preference key.
             let rawOrientation = preferences?.string(forKey: "orientation") ?? "bottom"
             if let orientation = DockLayoutHint.Orientation(rawValue: rawOrientation) {
-                // Only counts are retained; titles, paths and individual Dock item contents are never inspected.
-                let count = min(80, preferences?.array(forKey: "persistent-apps")?.count ?? 0)
-                    + min(80, preferences?.array(forKey: "persistent-others")?.count ?? 0)
-                    + (((preferences?.object(forKey: "show-recents") as? NSNumber)?.boolValue ?? true) ? 3 : 0)
-                    + 2 // Finder and Trash are implicit Dock tiles.
+                let pinned = preferences?.array(forKey: "persistent-apps") ?? []
+                let showRecents = (preferences?.object(forKey: "show-recents") as? NSNumber)?.boolValue ?? true
+                let recent = showRecents ? (preferences?.array(forKey: "recent-apps") ?? []) : []
+                // Bundle IDs deduplicate running, pinned and recent apps without reading titles or paths.
+                let configuredIDs = Set((pinned + recent).compactMap { entry -> String? in
+                    let tile = (entry as? [String: Any])?["tile-data"] as? [String: Any]
+                    return tile?["bundle-identifier"] as? String
+                })
+                let runningOnly = runningDockApps.subtracting(configuredIDs).count
+                let folders = min(80, preferences?.array(forKey: "persistent-others")?.count ?? 0)
+                let count = min(80, pinned.count) + min(80, recent.count) + folders + runningOnly + 2
                 let tile = (preferences?.object(forKey: "tilesize") as? NSNumber)?.floatValue ?? 48
                 let autoHides = (preferences?.object(forKey: "autohide") as? NSNumber)?.boolValue ?? false
                 dockLayout = DockLayoutHint(orientation: orientation, tileSize: tile, itemCount: count,
-                                            autoHides: autoHides)
+                                            autoHides: autoHides, hasRecentSection: !recent.isEmpty)
             } else { dockLayout = nil }
         }
         let processRoles = roles
@@ -259,12 +269,13 @@ final class WindowTracker {
                                           uniquingKeysWith: { first, _ in first })
         let widgetIDs = Set(records.lazy.filter { $0.role == .widget }.map(\.id))
         let displayLayoutBounds = displays.reduce(CGRect.null) { $0.union($1.bounds) }
+        let appearance = DesktopAppearance(macOSMajorVersion: ProcessInfo.processInfo.operatingSystemVersion.majorVersion)
         return displays.map { display in
             let scene = DesktopSceneBuilder.build(displayBounds: display.bounds, menuInset: display.menuInset,
                                                   windows: records, dockLayout: dockLayout,
                                                   preferredDockID: preferredDockIDs[display.id],
                                                   dockBottomInset: display.dockBottomInset,
-                                                  displayLayoutBounds: displayLayoutBounds)
+                                                  displayLayoutBounds: displayLayoutBounds, appearance: appearance)
             let spotlight = scene.surfaces.compactMap { surface -> SpotlightSnowSupport? in
                 guard surface.isElevated, let level = spotlightLevels[surface.id],
                       surface.id <= UInt64(UInt32.max) else { return nil }

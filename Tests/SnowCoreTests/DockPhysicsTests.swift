@@ -35,6 +35,33 @@ final class DockPhysicsTests: XCTestCase {
         })
     }
 
+    func testSnowPushedUnderDockStaysConnectedAcrossTheTrayEdge() throws {
+        let geometry = scene(bounds: CGRect(x: 200, y: 730, width: 600, height: 70))
+        let simulation = SnowSimulation(size: SIMD2(1000, 800), budget: SimulationBudget(flakes: 0))
+        simulation.updateScene(surfaces: geometry.surfaces, bodies: geometry.bodies)
+        simulation.clear()
+        let floor = try XCTUnwrap(simulation.drifts.first { $0.surface.id == DesktopSceneBuilder.groundID })
+        XCTAssertEqual(floor.depositMass(at: 202, mass: 30), 0, accuracy: 0.001)
+        XCTAssertGreaterThan(floor.height(at: 202), 0)
+        simulation.rebuildMesh()
+        XCTAssertTrue(simulation.mesh.contains {
+            $0.position.x > 200 && $0.position.x < 210 && $0.position.y < 800
+        }, "The renderer must keep the floor mesh under the Dock, where the real tray can occlude it")
+        XCTAssertFalse(floor.surface.isSnowExposed(at: 202), "The Dock still casts a snowfall shadow")
+    }
+
+    func testDockRidgeReachesRoundedShoulders() throws {
+        let geometry = DesktopSceneBuilder.build(displayBounds: display, menuInset: 24,
+            windows: [DesktopWindowRecord(id: 7, bounds: CGRect(x: 200, y: 730, width: 600, height: 64),
+                                          layer: 20, role: .dock)], appearance: .modern)
+        let surface = try XCTUnwrap(geometry.surfaces.first { $0.isDock })
+        let drift = SnowDrift(surface: surface, cellCount: 151)
+        drift.accumulate(dt: 120, intensity: 1)
+        XCTAssertGreaterThan(drift.height(at: 4), 3)
+        XCTAssertGreaterThan(drift.height(at: 596), 3)
+        XCTAssertEqual(drift.height(at: 0), 0)
+    }
+
     func testBottomDockHoverGeometryPreservesItsPileAndMovesItsSnowSurface() throws {
         let initial = scene(bounds: CGRect(x: 200, y: 720, width: 600, height: 70))
         let simulation = SnowSimulation(size: SIMD2(1000, 800), budget: SimulationBudget(flakes: 0))

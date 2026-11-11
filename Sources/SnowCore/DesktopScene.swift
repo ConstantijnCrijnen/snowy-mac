@@ -11,7 +11,8 @@ public enum DesktopSceneBuilder {
     public static func build(displayBounds display: CGRect, menuInset: Float,
                              windows: [DesktopWindowRecord], dockLayout: DockLayoutHint? = nil,
                              preferredDockID: UInt64? = nil, dockBottomInset: Float? = nil,
-                             displayLayoutBounds: CGRect? = nil) -> DesktopScene {
+                             displayLayoutBounds: CGRect? = nil,
+                             appearance: DesktopAppearance = .classic) -> DesktopScene {
         guard valid(display), display.width > 1, display.height > 1 else {
             return DesktopScene(surfaces: [], bodies: [])
         }
@@ -91,7 +92,8 @@ public enum DesktopSceneBuilder {
                 if ($0.layer == dockLevel) != ($1.layer == dockLevel) { return $0.layer != dockLevel }
                 return $0.id > $1.id
             }
-            if let bounds = reservedBottomTray(display: display, inset: dockBottomInset, hint: dockLayout) {
+            if let bounds = reservedBottomTray(display: display, inset: dockBottomInset, hint: dockLayout,
+                                               appearance: appearance) {
                 // A screen's live reserved bottom strip proves where a visible Dock lives,
                 // even when WindowServer exposes no compact or opaque Dock window.
                 let footprints = dockRecords.filter {
@@ -137,7 +139,8 @@ public enum DesktopSceneBuilder {
         }
         let bodies = selected.map { record in
             SolidBody(id: record.id, bounds: record.bounds.offsetBy(dx: -display.minX, dy: -display.minY)
-                .intersection(CGRect(origin: .zero, size: display.size)), cornerRadius: radius(for: record),
+                .intersection(CGRect(origin: .zero, size: display.size)),
+                cornerRadius: radius(for: record, appearance: appearance),
                 isElevated: record.role == .spotlight)
         }
         let width = Float(display.width), height = Float(display.height)
@@ -146,7 +149,9 @@ public enum DesktopSceneBuilder {
         for body in bodies {
             groundSnowfall = Geometry.subtract(Span(Float(body.bounds.minX), Float(body.bounds.maxX)), from: groundSnowfall)
         }
-        for body in bodies where body.bounds.maxY >= display.height - 0.5 {
+        // The compositor already hides snow behind the real Dock. Keep floor geometry
+        // continuous under the tray, whose estimated edge may not match its visible edge.
+        for body in bodies where body.id != dockID && body.bounds.maxY >= display.height - 0.5 {
             groundSpans = Geometry.subtract(Span(Float(body.bounds.minX), Float(body.bounds.maxX)), from: groundSpans)
         }
         // Ground must survive a surface-budget truncation.
@@ -158,6 +163,10 @@ public enum DesktopSceneBuilder {
             guard top >= max(0, menuInset), top < height else { continue }
             let left = max(record.bounds.minX, display.minX), right = min(record.bounds.maxX, display.maxX)
             guard right - left >= 16 else { continue }
+            let cornerRadius = radius(for: record, appearance: appearance)
+            // Include the full application pile (18 pt plus its feather) and both shoulders.
+            let snowTop = record.bounds.minY - 20
+            let snowBottom = record.bounds.minY + CGFloat(cornerRadius) + 1
             var spans = [Span(0, Float(right - left))]
             var snowfall = spans
             for other in selected where other.id != record.id {
@@ -167,15 +176,27 @@ public enum DesktopSceneBuilder {
                 if other.bounds.minY < record.bounds.minY {
                     snowfall = Geometry.subtract(Span(Float(other.bounds.minX - left), Float(other.bounds.maxX - left)), from: snowfall)
                 }
-                // Snow is below every native window. Clip against every physical body, not only front windows.
-                if other.bounds.minY < record.bounds.minY - 0.01, other.bounds.maxY > record.bounds.minY - 20 {
-                    spans = Geometry.subtract(Span(Float(other.bounds.minX - left), Float(other.bounds.maxX - left)), from: spans)
-                    if spans.isEmpty { break }
+                guard other.bounds.minY < record.bounds.minY - 0.01 else { continue }
+                let inset: CGFloat
+                if record.role == .application {
+                    // macOS composites the snow panel under native windows. Omit only columns
+                    // covered across the whole pile, leaving rounded corners to the compositor.
+                    guard other.bounds.minY <= snowTop, other.bounds.maxY >= snowBottom else { continue }
+                    let radius = CGFloat(radius(for: other, appearance: appearance))
+                    let meetsCorner = snowTop < other.bounds.minY + radius || snowBottom > other.bounds.maxY - radius
+                    inset = meetsCorner ? radius : 0
+                } else {
+                    guard other.bounds.maxY > snowTop else { continue }
+                    inset = 0
                 }
+                let covered = Span(Float(other.bounds.minX + inset - left), Float(other.bounds.maxX - inset - left))
+                guard covered.upper > covered.lower else { continue }
+                spans = Geometry.subtract(covered, from: spans)
+                if spans.isEmpty { break }
             }
             surfaces.append(Surface(id: record.id, x: Float(left - display.minX), y: top,
                                     width: Float(right - left), visibleSpans: spans, isDock: record.role == .dock,
-                                    cornerRadius: radius(for: record), snowfallSpans: snowfall,
+                                    cornerRadius: cornerRadius, snowfallSpans: snowfall,
                                     releasesSnowWhenRemoved: record.role == .spotlight))
         }
         return DesktopScene(surfaces: surfaces, bodies: bodies, dockWindowID: dockWindowID)
@@ -201,9 +222,16 @@ public enum DesktopSceneBuilder {
             && rect.minY >= display.maxY - 260 && rect.maxY >= display.maxY - 48 && visible.height >= 16
     }
 
-    private static func radius(for record: DesktopWindowRecord) -> Float {
-        min(record.role == .spotlight ? 28 : (record.role == .widget ? 22 : 12),
-            Float(min(record.bounds.width, record.bounds.height) / 2))
+    private static func radius(for record: DesktopWindowRecord, appearance: DesktopAppearance) -> Float {
+        let radius: Float
+        switch record.role {
+        case .spotlight: radius = 28
+        case .widget: radius = 22
+        case .dock: radius = appearance == .modern ? min(16, Float(record.bounds.height) / 3) : 12
+        case .application: radius = appearance == .modern && record.layer == 0 ? 26 : 12
+        case .desktop, .other: radius = 0
+        }
+        return min(radius, Float(min(record.bounds.width, record.bounds.height) / 2))
     }
 
     private static func dockScore(_ rect: CGRect, display: CGRect, hint: DockLayoutHint?) -> CGFloat {
@@ -222,15 +250,28 @@ public enum DesktopSceneBuilder {
             && rect.maxY >= display.maxY - 48
     }
 
-    private static func reservedBottomTray(display: CGRect, inset: Float?, hint: DockLayoutHint) -> CGRect? {
+    private static func reservedBottomTray(display: CGRect, inset: Float?, hint: DockLayoutHint,
+                                           appearance: DesktopAppearance) -> CGRect? {
         guard hint.orientation == .bottom, let inset, inset.isFinite,
               inset >= 20, CGFloat(inset) <= min(320, display.height * 0.5) else { return nil }
         let available = display.width - 16
-        let wantedLength = CGFloat(hint.itemCount) * (CGFloat(hint.tileSize) + 6) + 24
+        let bottomGap: CGFloat = appearance == .modern ? 6 : 0
+        let thickness = CGFloat(inset) - bottomGap
+        guard thickness >= 16 else { return nil }
+        let wantedLength: CGFloat
+        if appearance == .modern {
+            // The reservation includes the floating tray's bottom gap and icon padding.
+            // Use its height to bound the effective tile size when a crowded Dock shrinks.
+            let tile = min(CGFloat(hint.tileSize), max(12, thickness - 14))
+            let sectionPadding: CGFloat = hint.hasRecentSection ? 36 : 19
+            wantedLength = CGFloat(hint.itemCount) * (tile + 2) + sectionPadding
+        } else {
+            wantedLength = CGFloat(hint.itemCount) * (CGFloat(hint.tileSize) + 6) + 24
+        }
         let length = min(available, wantedLength)
         guard length >= 32 else { return nil }
         return CGRect(x: display.minX + (display.width - length) / 2,
-                      y: display.maxY - CGFloat(inset), width: length, height: CGFloat(inset))
+                      y: display.maxY - CGFloat(inset), width: length, height: thickness)
     }
 
     private static func estimatedBottomTray(host: CGRect, display: CGRect, hint: DockLayoutHint) -> CGRect? {

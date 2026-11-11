@@ -28,6 +28,16 @@ public struct SolidBody: Equatable, Sendable {
 
 public enum DesktopWindowRole: Sendable { case application, widget, dock, spotlight, desktop, other }
 
+/// Geometry estimates for the standard window and Dock styles available on macOS.
+public enum DesktopAppearance: Sendable {
+    case classic
+    case modern
+
+    public init(macOSMajorVersion: Int) {
+        self = macOSMajorVersion >= 26 ? .modern : .classic
+    }
+}
+
 /// Sanitized metadata in global Quartz coordinates; the builder returns display-local geometry.
 public struct DesktopWindowRecord: Sendable {
     public var id: UInt64
@@ -58,11 +68,14 @@ public struct DockLayoutHint: Sendable {
     public let tileSize: Float
     public let itemCount: Int
     public let autoHides: Bool
+    public let hasRecentSection: Bool
 
-    public init(orientation: Orientation, tileSize: Float, itemCount: Int, autoHides: Bool = false) {
+    public init(orientation: Orientation, tileSize: Float, itemCount: Int, autoHides: Bool = false,
+                hasRecentSection: Bool = false) {
         self.orientation = orientation
         self.tileSize = tileSize.isFinite ? max(16, min(128, tileSize)) : 48
         self.itemCount = max(1, min(80, itemCount))
         self.autoHides = autoHides
+        self.hasRecentSection = hasRecentSection
     }
 }
