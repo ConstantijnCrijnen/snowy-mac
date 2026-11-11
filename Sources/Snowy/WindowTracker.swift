@@ -48,7 +48,6 @@ final class WindowTracker {
     private var cachedRecords: [DesktopWindowRecord] = []
     private var trackedWindow: UInt32?
     private var roles: [Int32: DesktopWindowRole] = [:]
-    private var bundleIdentifiers: [Int32: String] = [:]
     private var lastProcessLookup: TimeInterval = -.infinity
     private var wasDragging = false
     private var dockLayout: DockLayoutHint?
@@ -122,14 +121,11 @@ final class WindowTracker {
         inFlight = true
         if now - lastProcessLookup > 5 {
             roles.removeAll(keepingCapacity: true)
-            bundleIdentifiers.removeAll(keepingCapacity: true)
             finderPID = nil
             for app in NSWorkspace.shared.runningApplications {
-                guard let bundle = app.bundleIdentifier else { continue }
-                bundleIdentifiers[app.processIdentifier] = bundle
-                if let role = DesktopWindowDecoder.processRole(bundleIdentifier: bundle) {
-                    roles[app.processIdentifier] = role
-                }
+                guard let bundle = app.bundleIdentifier,
+                      let role = DesktopWindowDecoder.processRole(bundleIdentifier: bundle) else { continue }
+                roles[app.processIdentifier] = role
                 if bundle == "com.apple.finder" { finderPID = app.processIdentifier }
             }
             lastProcessLookup = now
@@ -152,13 +148,11 @@ final class WindowTracker {
             } else { dockLayout = nil }
         }
         let processRoles = roles
-        let processBundleIdentifiers = bundleIdentifiers
         let ownPID = ProcessInfo.processInfo.processIdentifier
         let requestGeneration = generation
         Task { [weak self] in
             let records = await Task.detached(priority: .utility) {
-                Self.read(processRoles: processRoles, processBundleIdentifiers: processBundleIdentifiers,
-                          ownPID: ownPID, target: target)
+                Self.read(processRoles: processRoles, ownPID: ownPID, target: target)
             }.value
             guard let self else { return }
             self.inFlight = false
@@ -234,8 +228,7 @@ final class WindowTracker {
         }.map { UInt32($0.id) }
     }
 
-    nonisolated private static func read(processRoles: [Int32: DesktopWindowRole],
-                                         processBundleIdentifiers: [Int32: String], ownPID: Int32,
+    nonisolated private static func read(processRoles: [Int32: DesktopWindowRole], ownPID: Int32,
                                          target: UInt32?) -> [DesktopWindowRecord] {
         // During a drag, only the selected moving window is queried at display cadence. A full
         // on-screen discovery remains bounded to 10 Hz (2 Hz idle), and requests never overlap.
@@ -255,8 +248,7 @@ final class WindowTracker {
         }
         return DesktopWindowDecoder.decode(metadata: onScreen, processRoles: processRoles,
                                             excludingPID: ownPID,
-                                            dockLevel: Int(CGWindowLevelForKey(.dockWindow)),
-                                            processBundleIdentifiers: processBundleIdentifiers)
+                                            dockLevel: Int(CGWindowLevelForKey(.dockWindow)))
     }
 
     nonisolated private static func snapshots(displays: [DisplayGeometry],
@@ -266,11 +258,13 @@ final class WindowTracker {
         let spotlightLevels = Dictionary(records.filter { $0.role == .spotlight }.map { ($0.id, $0.layer) },
                                           uniquingKeysWith: { first, _ in first })
         let widgetIDs = Set(records.lazy.filter { $0.role == .widget }.map(\.id))
+        let displayLayoutBounds = displays.reduce(CGRect.null) { $0.union($1.bounds) }
         return displays.map { display in
             let scene = DesktopSceneBuilder.build(displayBounds: display.bounds, menuInset: display.menuInset,
                                                   windows: records, dockLayout: dockLayout,
                                                   preferredDockID: preferredDockIDs[display.id],
-                                                  dockBottomInset: display.dockBottomInset)
+                                                  dockBottomInset: display.dockBottomInset,
+                                                  displayLayoutBounds: displayLayoutBounds)
             let spotlight = scene.surfaces.compactMap { surface -> SpotlightSnowSupport? in
                 guard surface.isElevated, let level = spotlightLevels[surface.id],
                       surface.id <= UInt64(UInt32.max) else { return nil }

@@ -10,16 +10,27 @@ public enum DesktopSceneBuilder {
 
     public static func build(displayBounds display: CGRect, menuInset: Float,
                              windows: [DesktopWindowRecord], dockLayout: DockLayoutHint? = nil,
-                             preferredDockID: UInt64? = nil, dockBottomInset: Float? = nil) -> DesktopScene {
+                             preferredDockID: UInt64? = nil, dockBottomInset: Float? = nil,
+                             displayLayoutBounds: CGRect? = nil) -> DesktopScene {
         guard valid(display), display.width > 1, display.height > 1 else {
             return DesktopScene(surfaces: [], bodies: [])
         }
+        let layout = displayLayoutBounds ?? display
+        let floatingLevel = Int(CGWindowLevelForKey(.floatingWindow))
         let candidates = windows.prefix(512).filter { record in
             guard valid(record.bounds), record.bounds.intersects(display) else { return false }
             switch record.role {
             case .application:
+                // Window alpha describes the fade level, so a presentation overlay can
+                // report alpha 1. Exclude only substantially oversized floating windows
+                // beyond both vertical edges of the display layout. A window spanning
+                // vertically arranged displays can still be a physical obstacle.
+                let oversizedFloatingWindow = record.layer == floatingLevel
+                    && record.bounds.height >= 1.5 * display.height
+                    && record.bounds.minY < layout.minY && record.bounds.maxY > layout.maxY
                 return record.layer >= 0 && record.layer < 20
                     && record.bounds.width >= 48 && record.bounds.height >= 32
+                    && !oversizedFloatingWindow
             case .widget: return plausibleWidget(record.bounds, display: display)
             case .dock:
                 // Vertical Docks are intentionally outside the snow scene, including
